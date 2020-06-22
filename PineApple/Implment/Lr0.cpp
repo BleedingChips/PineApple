@@ -144,59 +144,7 @@ namespace PineApple::Lr0
 				}
 			}
 		}
-		throw Error::unacceptable_symbol{ MaxTokenUsed, MaxTokenUsed < TokenLength ? TokenArray[MaxTokenUsed] : Symbol::EndOfFile(), std::move(BackupSteps) };
-
-		/*
-		do
-		{	
-			auto CurNode = Table.nodes[*CurSearchIte.State.rbegin()];
-			for (size_t i = 0; i < CurNode.reduce_count; ++i)
-				SearchStack.push_back({ CurSearchIte, CurNode.reduce_count - 1 - i });
-			Symbol Sym;
-			if (CurSearchIte.TokenIndex < TokenLength)
-				Sym = TokenArray[CurSearchIte.TokenIndex];
-			else
-				Sym = Symbol::EndOfFile();
-			bool Re = HandleInputToken(Table, Steps, CurSearchIte, Sym, CurSearchIte.TokenIndex++);
-			if (!Re)
-			{
-				if (MaxTokenUsed < CurSearchIte.TokenIndex)
-				{
-					MaxTokenUsed = CurSearchIte.TokenIndex;
-					BackupSteps = Steps;
-				}
-				if (!SearchStack.empty())
-				{
-					auto [Element, Index] = std::move(*SearchStack.rbegin());
-					SearchStack.pop_back();
-					auto OldStete = *Element.State.rbegin();
-					auto CurNode = Table.nodes[*Element.State.rbegin()];
-					auto Reduce = Table.Reduces[CurNode.reduce_adress + Index];
-					auto Production = Table.productions[Reduce.ProductionIndex];
-					Steps.resize(Element.StepsRecord);
-					Step ReduceStep;
-					ReduceStep.value = Symbol::MakeSymbol(Production.value);
-					ReduceStep.reduce.production_index = Reduce.ProductionIndex;
-					ReduceStep.reduce.production_count = Production.production_count;
-					ReduceStep.reduce.mask = Production.mask;
-					Steps.push_back(ReduceStep);
-					Element.StepsRecord += 1;
-					Element.State.resize(Element.State.size() - Production.production_count);
-					bool Re = HandleInputToken(Table, Steps, Element, Symbol::MakeSymbol(Production.value), 0);
-					assert(Re);
-					CurSearchIte = std::move(Element);
-					continue;
-				}
-				else {
-					throw Error::unacceptable_symbol{ MaxTokenUsed, MaxTokenUsed < TokenLength ? TokenArray[MaxTokenUsed] : Symbol::EndOfFile(), std::move(BackupSteps) };
-				}
-			}
-			else {
-				if (Sym == Symbol::EndOfFile())
-					return { std::move(Steps) };
-			}
-		} while (true);
-		*/
+		throw Error::UnaccableSymbol{ MaxTokenUsed, MaxTokenUsed < TokenLength ? TokenArray[MaxTokenUsed] : Symbol::EndOfFile(), std::move(BackupSteps) };
 	}
 
 	std::set<Symbol> CalNullableSet(const std::vector<ProductionInput>& production)
@@ -346,7 +294,7 @@ namespace PineApple::Lr0
 							Inserted.first->second.insert(ite2);
 					}
 				}else
-					throw Error::operator_priority_conflict{ ite, ite };
+					throw Error::OperatorPriorityConflict{ ite, ite };
 			}
 		}
 		return std::move(ope_priority);

@@ -9,32 +9,6 @@ namespace PineApple::Ebnf
 
 	struct Table
 	{
-
-		struct unacceptable_token_error : std::exception {
-			unacceptable_token_error(std::u32string string, size_t line, size_t index) : string(std::move(string)), line(line), index(index) {}
-			unacceptable_token_error(const unacceptable_token_error&) = default;
-			char const* what() const noexcept override;
-			std::u32string string;
-			size_t line;
-			size_t index;
-		};
-
-		struct undefine_terminal_error : std::exception {
-			undefine_terminal_error(std::u32string token, size_t line, size_t index) : string(std::move(string)), line(line), index(index) {}
-			undefine_terminal_error(const undefine_terminal_error&) = default;
-			char const* what() const noexcept override;
-			std::u32string string;
-			size_t line;
-			size_t index;
-		};
-
-		struct miss_start_symbol : std::exception {
-			miss_start_symbol() {}
-			miss_start_symbol(const miss_start_symbol&) = default;
-			char const* what() const noexcept override;
-		};
-
-
 		std::u32string symbol_table;
 		std::vector<std::tuple<std::size_t, std::size_t>> symbol_map;
 		size_t ter_count;
@@ -43,7 +17,6 @@ namespace PineApple::Ebnf
 		std::u32string_view FindSymbolString(size_t input, bool IsTerminal) const noexcept;
 		std::optional<std::tuple<size_t, bool>> FindSymbolState(std::u32string_view sym) const noexcept;
 	};
-
 
 	Table CreateTable(std::u32string_view Code);
 
@@ -99,10 +72,31 @@ namespace PineApple::Ebnf
 
 	namespace Error
 	{
+
+		struct MissingStartSymbol {};
+
+		struct UndefinedTerminal {
+			std::u32string token;
+			Nfa::Location loc;
+		};
+
+		struct UnsetDefaultProductionHead {};
+
+		struct RedefinedStartSymbol {
+			Nfa::Location loc;
+		};
+
+		struct UnaccableToken {
+			std::u32string token;
+			Nfa::Location loc;
+		};
+
+		/*
 		struct ErrorMessage {
 			std::u32string message;
 			Nfa::Location loc;
 		};
+		*/
 	}
 }
 

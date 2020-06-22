@@ -51,17 +51,18 @@ namespace PineApple::Nfa
 
 	std::vector<MarchElement> Process(Table const& Ref, std::u32string_view String)
 	{
+		auto IteString = String;
 		std::vector<MarchElement> Result;
-		while (String.size() != 0)
+		while (IteString.size() != 0)
 		{
-			auto Re = Consume(Ref, String);
+			auto Re = Consume(Ref, IteString);
 			if (Re)
 			{
 				Result.push_back(*Re);
-				String = Re->last_string;
+				IteString = Re->last_string;
 			}
 			else
-				throw Error::UnAccaptableString{std::u32string(String)};
+				throw Error::UnaccaptableString{ std::u32string(String), {String.size() - IteString.size(), 0, String.size() - IteString.size()} };
 		}
 		return std::move(Result);
 	}
@@ -91,16 +92,17 @@ namespace PineApple::Nfa
 	{
 		Location Loc;
 		std::vector<DocumenetMarchElement> Result;
-		while (String.size() != 0)
+		auto IteString = String;
+		while (IteString.size() != 0)
 		{
-			auto Re = DecumentComsume(Ref, String, Loc);
+			auto Re = DecumentComsume(Ref, IteString, Loc);
 			if (Re)
 			{
 				Result.push_back(*Re);
-				String = Re->march.last_string;
+				IteString = Re->march.last_string;
 			}
 			else
-				throw Error::UnAccaptableString{ std::u32string(String) };
+				throw Error::UnaccaptableString{ std::u32string(String), Loc };
 		}
 		return std::move(Result);
 	}
@@ -503,10 +505,9 @@ namespace PineApple::Nfa
 			TopNode.edge.push_back(epsilon{ s1 });
 			return *this;
 		}
-		catch (Lr0::Error::unacceptable_symbol const& UAS)
+		catch (Lr0::Error::UnaccableSymbol const& UAS)
 		{
-			throw;
-			//throw unacceptable_rex_error(std::u32string(rex), accept_state, static_cast<size_t>(ite - rex.begin()));
+			throw Error::UnaccaptableRexgex{ std::u32string(rex), accept_state, UAS.index };
 		}
 	}
 

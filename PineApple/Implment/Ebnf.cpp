@@ -105,21 +105,6 @@ namespace PineApple::Ebnf
 		return std::nullopt;
 	}
 
-	char const* Table::unacceptable_token_error::what() const noexcept
-	{
-		return "Unacceprable Token Error";
-	}
-
-	char const* Table::undefine_terminal_error::what() const noexcept
-	{
-		return "Undefine Terminal Error";
-	}
-
-	char const* Table::miss_start_symbol::what() const noexcept
-	{
-		return "Missing Start Symbol Error";
-	}
-
 	std::tuple<std::vector<Symbol>, std::vector<Nfa::DocumenetMarchElement>> DefaultLexer(Nfa::Table const& table, std::u32string_view& input)
 	{
 		std::vector<Symbol> R1;
@@ -209,15 +194,19 @@ namespace PineApple::Ebnf
 		while (!input.empty())
 		{
 			auto Re = Nfa::DecumentComsume(table, input, Loc);
-			assert(Re);
-			input = Re->march.last_string;
-			if (Re->march.acception == static_cast<size_t>(T::Mask)) { break; }
-			auto Ite = Remove.find(Re->march.acception);
-			if (Ite == Remove.end())
+			if (Re)
 			{
-				R1.push_back(Symbol(Re->march.acception, Lr0::TerminalT{}));
-				R2.push_back(*Re);
+				input = Re->march.last_string;
+				if (Re->march.acception == static_cast<size_t>(T::Mask)) { break; }
+				auto Ite = Remove.find(Re->march.acception);
+				if (Ite == Remove.end())
+				{
+					R1.push_back(Symbol(Re->march.acception, Lr0::TerminalT{}));
+					R2.push_back(*Re);
+				}
 			}
+			else
+				throw Error::UnaccableToken{ {}, Loc };
 		}
 		return { std::move(R1), std::move(R2) };
 	}
@@ -258,39 +247,47 @@ namespace PineApple::Ebnf
 
 
 			auto [Symbols, Elements] = EbnfLexer(nfa_table, code, { static_cast<size_t>(T::Empty), static_cast<size_t>(T::Command) }, Loc);
-			auto History = Lr0::Process(lr0_instance, Symbols.data(), Symbols.size());
-			Lr0::Process(History, [&](Lr0::Element& input) -> std::any {
-				if (input.IsTerminal())
-				{
-					switch (input.value)
+			try {
+				auto History = Lr0::Process(lr0_instance, Symbols.data(), Symbols.size());
+				Lr0::Process(History, [&](Lr0::Element& input) -> std::any {
+					if (input.IsTerminal())
 					{
-					case* T::Terminal: {
-						return Elements[input.shift.token_index].march.capture;
-					}break;
-					case* T::Rex: {
-						auto re = Elements[input.shift.token_index].march.capture;
-						return  std::u32string_view( re.data() + 1, re.size() - 2 );
-					}break;
-					default:break;
+						switch (input.value)
+						{
+						case* T::Terminal: {
+							return Elements[input.shift.token_index].march.capture;
+						}break;
+						case* T::Rex: {
+							auto re = Elements[input.shift.token_index].march.capture;
+							return  std::u32string_view(re.data() + 1, re.size() - 2);
+						}break;
+						default:break;
+						}
 					}
-				}
-				else {
-					switch (input.reduce.mask)
-					{
-					case 1: {
-						auto Token = input.GetData<std::u32string_view>(1);
-						auto Rex = input.GetData<std::u32string_view>(3);
-						auto re = symbol_to_index.insert({ std::u32string(Token), static_cast<size_t>(symbol_to_index.size()) });
-						symbol_rex.push_back({ std::u32string(Rex) , re.first->second });
-					}break;
-					case 4:
-						return false;
-						break;
-					default: break;
+					else {
+						switch (input.reduce.mask)
+						{
+						case 1: {
+							auto Token = input.GetData<std::u32string_view>(1);
+							auto Rex = input.GetData<std::u32string_view>(3);
+							auto re = symbol_to_index.insert({ std::u32string(Token), static_cast<size_t>(symbol_to_index.size()) });
+							symbol_rex.push_back({ std::u32string(Rex) , re.first->second });
+						}break;
+						case 4:
+							return false;
+							break;
+						default: break;
+						}
 					}
-				}
-				return {};
-			});
+					return {};
+				});
+			}
+			catch (Lr0::Error::UnaccableSymbol const& US)
+			{
+				auto P = Elements[US.index];
+				throw Error::UnaccableToken{ std::u32string(P.march.capture), P.location};
+			}
+			
 		}
 
 		std::map<std::u32string, size_t> noterminal_symbol_to_index;
@@ -393,7 +390,7 @@ namespace PineApple::Ebnf
 							if (Find != symbol_to_index.end())
 								return Token{ Symbol(Find->second, Lr0::TerminalT{}), element };
 							else
-								throw Error::ErrorMessage{ std::u32string(U"Undefined Terminal : ") + string, element.location };
+								throw Error::UndefinedTerminal{ string, element.location };
 						}break;
 						case* T::NoTerminal: {
 							auto Find = noterminal_symbol_to_index.insert({ string, noterminal_symbol_to_index.size() });
@@ -442,7 +439,7 @@ namespace PineApple::Ebnf
 							if (!start_symbol)
 								start_symbol = P1.sym;
 							else
-								throw Error::ErrorMessage{ U"Redefine Start Symbol !",  P1.march.location };
+								throw Error::RedefinedStartSymbol{ P1.march.location };
 							return std::vector<Lr0::ProductionInput>{};
 						}break;
 						case 2: {
@@ -471,7 +468,7 @@ namespace PineApple::Ebnf
 						}
 						case 7: {
 							if (!LastHead)
-								throw Error::ErrorMessage{ U"Unreferenced Production Head !", {} };
+								throw Error::UnsetDefaultProductionHead{};
 							return Token{ *LastHead, {} };
 						}
 						case 8: {
@@ -493,13 +490,6 @@ namespace PineApple::Ebnf
 						}break;
 						case 9: {
 							return std::move(tra.GetRawData(1));
-							/*
-							auto TemSym = Symbol(noterminal_temporary--, Lr0::NoTerminalT{});
-							auto P = std::move(datas[1].cast<SymbolList>());
-							P.insert(P.begin(), TemSym);
-							productions.push_back(std::move(P));
-							return Token{ TemSym, {} };
-							*/
 						}break;
 						case 10: {
 							auto TemSym = Symbol(noterminal_temporary--, Lr0::NoTerminalT{});
@@ -549,18 +539,10 @@ namespace PineApple::Ebnf
 					return {};
 				});
 			}
-			catch (Lr0::Error::unacceptable_symbol const& US)
+			catch (Lr0::Error::UnaccableSymbol const& US)
 			{
-				std::u32string TokenName;
-				std::optional<Nfa::Location> Loc;
-				if (US.index >= Elements.size())
-					TokenName = U"&EOF";
-				else {
-					auto Element = Elements[US.index];
-					TokenName = Element.march.capture;
-					Loc = Element.location;
-				}
-				__debugbreak();
+				auto P = Elements[US.index];
+				throw Error::UnaccableToken{ std::u32string(P.march.capture), P.location };
 			}
 			
 
@@ -601,57 +583,64 @@ namespace PineApple::Ebnf
 			);
 
 			auto [Symbols, Elements] = EbnfLexer(nfa_instance, code, { static_cast<size_t>(T::Empty), static_cast<size_t>(T::Command) }, Loc);
-			auto History = Lr0::Process(lr0_instance, Symbols.data(), Symbols.size());
-			Lr0::Process(History, [&](Lr0::Element& step) -> std::any {
-				if (step.IsTerminal())
-				{
-					if (step.value == *T::Terminal || step.value == *T::Rex)
+			try {
+				auto History = Lr0::Process(lr0_instance, Symbols.data(), Symbols.size());
+				Lr0::Process(History, [&](Lr0::Element& step) -> std::any {
+					if (step.IsTerminal())
 					{
-						auto element = Elements[step.shift.token_index];
-						auto Find = symbol_to_index.find(std::u32string(element.march.capture));
-						if (Find != symbol_to_index.end())
-							return Token{ Symbol(Find->second, Lr0::TerminalT{}) };
-						else
-							throw Error::ErrorMessage{ U"Undefine Terminal " + std::u32string(element.march.capture), element.location };
+						if (step.value == *T::Terminal || step.value == *T::Rex)
+						{
+							auto element = Elements[step.shift.token_index];
+							auto Find = symbol_to_index.find(std::u32string(element.march.capture));
+							if (Find != symbol_to_index.end())
+								return Token{ Symbol(Find->second, Lr0::TerminalT{}) };
+							else
+								throw Error::UndefinedTerminal{std::u32string(element.march.capture), element.location };
+						}
 					}
-				}
-				else {
-					switch (step.reduce.mask)
-					{
-					case 1: {
-						std::vector<Symbol> List;
-						List.push_back(step.GetData<Token>(0).sym);
-						return std::move(List);
-					}break;
-					case 2: {
-						auto P1 = std::move(step.GetData<std::vector<Symbol>>(0));
-						auto P2 = std::move(step.GetData<std::vector<Symbol>>(1));
-						P1.insert(P1.end(), P2.begin(), P2.end());
-						return std::move(P1);
-					} break;
-					case 3: {
-						auto P = step.GetData<Token>(1).sym;
-						operator_priority.push_back({ {P}, Lr0::Associativity::Left });
-						return {};
-					} break;
-					case 4: {
-						auto P = step.GetData<std::vector<Symbol>>(2);
-						operator_priority.push_back({ std::move(P), Lr0::Associativity::Left });
-						return {};
-					} break;
-					case 5: {
-						auto P = step.GetData<std::vector<Symbol>>(2);
-						operator_priority.push_back({ std::move(P), Lr0::Associativity::Right });
-						return {};
-					} break;
+					else {
+						switch (step.reduce.mask)
+						{
+						case 1: {
+							std::vector<Symbol> List;
+							List.push_back(step.GetData<Token>(0).sym);
+							return std::move(List);
+						}break;
+						case 2: {
+							auto P1 = std::move(step.GetData<std::vector<Symbol>>(0));
+							auto P2 = std::move(step.GetData<std::vector<Symbol>>(1));
+							P1.insert(P1.end(), P2.begin(), P2.end());
+							return std::move(P1);
+						} break;
+						case 3: {
+							auto P = step.GetData<Token>(1).sym;
+							operator_priority.push_back({ {P}, Lr0::Associativity::Left });
+							return {};
+						} break;
+						case 4: {
+							auto P = step.GetData<std::vector<Symbol>>(2);
+							operator_priority.push_back({ std::move(P), Lr0::Associativity::Left });
+							return {};
+						} break;
+						case 5: {
+							auto P = step.GetData<std::vector<Symbol>>(2);
+							operator_priority.push_back({ std::move(P), Lr0::Associativity::Right });
+							return {};
+						} break;
+						}
 					}
-				}
-				return {};
-			});
+					return {};
+				});
+			}
+			catch (Lr0::Error::UnaccableSymbol const& US)
+			{
+				auto P = Elements[US.index];
+				throw Error::UnaccableToken{ std::u32string(P.march.capture), P.location };
+			}
 		}
 
 		if (!start_symbol)
-			throw Error::ErrorMessage{ U"Missing Start Symbol !", {} };
+			throw Error::MissingStartSymbol{};
 
 		size_t DefineProduction_count = productions.size();
 		//productions.insert(productions.end(), std::move_iterator(productions_for_temporary.begin()), std::move_iterator(productions_for_temporary.end()));
@@ -673,7 +662,6 @@ namespace PineApple::Ebnf
 		}
 		
 		try {
-			
 			std::vector<std::u32string_view> Rexs;
 			std::vector<size_t> MappingSize;
 			for (auto ite = symbol_rex.rbegin(); ite != symbol_rex.rend(); ++ite)

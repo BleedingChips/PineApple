@@ -52,8 +52,15 @@ namespace PineApple::Nfa
 
 	namespace Error
 	{
-		struct UnAccaptableString {
-			std::u32string LastString;
+		struct UnaccaptableRexgex {
+			std::u32string Regex;
+			size_t AccepetableState;
+			size_t Index;
+		};
+
+		struct UnaccaptableString {
+			std::u32string TotalString;
+			Location Loc;
 		};
 	}
 }

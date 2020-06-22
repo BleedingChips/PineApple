@@ -177,16 +177,16 @@ namespace PineApple::Lr0
 
 	namespace Error
 	{
-		struct noterminal_production_undefine {
+		struct NoterminalUndefined {
 			Symbol value;
 		};
 
-		struct operator_priority_conflict {
+		struct OperatorPriorityConflict {
 			Symbol target_symbol;
 			Symbol conflicted_symbol;
 		};
 
-		struct production_redefine
+		struct ProductionRedefined
 		{
 			std::vector<Symbol> productions;
 			size_t production_index_1;
@@ -195,7 +195,7 @@ namespace PineApple::Lr0
 			size_t respond_mask_2;
 		};
 
-		struct unacceptable_symbol {
+		struct UnaccableSymbol {
 			size_t index;
 			Symbol symbol;
 			std::vector<Step> backup_step;
