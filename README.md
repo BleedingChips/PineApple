@@ -134,7 +134,7 @@ Demo 地址见 `Demo/Demo.sln(vs2019)`
     std::u32srinrg_view code = 
     R"(
         _IGNORE := '\s'
-        Num := '(\+|\-)?[1-9][0-9]*'
+        Num := '(\+|\-)?[1-9][0-9]*' : [1]
 
         %%%
 
@@ -157,7 +157,7 @@ Demo 地址见 `Demo/Demo.sln(vs2019)`
 		int result = std::any_cast<int>(Ebnf::Process(His, [](Ebnf::Element& e) -> std::any {
 			if (e.IsTerminal())
 			{
-				if (e.string == U"Num")
+				if (e.shift.mask == 1)
 					return StrToInt(e.shift.capture);
 			}
 			else {
