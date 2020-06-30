@@ -213,6 +213,32 @@ namespace PineApple::CharEncode
 		std::basic_string_view<Type> mStorage;
 	};
 
+	namespace Implement
+	{
+		template<typename T> struct Imp;
+		template<>
+		struct Imp<char32_t> {
+			std::u32string operator()(std::byte*, size_t);
+		};
+		template<>
+		struct Imp<char> {
+			std::string operator()(std::byte*, size_t);
+		};
+	}
+
+	template<>
+	struct Wrapper<std::byte>
+	{
+
+		Wrapper(std::byte* b, size_t length) : datas(b), length(length) {}
+		template<typename ToType> std::basic_string<ToType> To() {
+			return Implement::Imp<ToType>{}(datas, length);
+		}
+	private:
+		std::byte* datas;
+		size_t length;
+	};
+
 	enum class BomType
 	{
 		None,
@@ -223,7 +249,7 @@ namespace PineApple::CharEncode
 		UTF32BE
 	};
 
-	enum Ending {
+	enum class Ending : uint8_t {
 		Less,
 		Big
 	};

@@ -138,6 +138,8 @@ namespace PineApple::Lr0
 
 	template<typename RespondFunction>
 	std::any Process(History const& ref, RespondFunction&& Func) { return ref(std::forward<RespondFunction>(Func)); }
+	template<typename RequireType, typename RespondFunction>
+	RequireType ProcessWrapper(History const& ref, RespondFunction&& Func) { return std::any_cast<RequireType>(ref(std::forward<RespondFunction>(Func))); }
 
 	enum class  Associativity
 	{

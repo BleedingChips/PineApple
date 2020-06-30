@@ -16,28 +16,34 @@ namespace PineApple::StrFormat
 
 	PatternRef CreatePatternRef(std::u32string_view Ref)
 	{
-		auto Result = Nfa::Process(table, Ref);
-		std::vector<PatternRef::Element> patterns;
-		for (auto& ite : Result)
-		{
-			switch (ite.acception)
+		try {
+			auto Result = Nfa::Process(table, Ref);
+			std::vector<PatternRef::Element> patterns;
+			for (auto& ite : Result)
 			{
-			case 0: {
-				patterns.push_back({ PatternType::NormalString, ite.capture});
-			} break;
-			case 1: {
-				patterns.push_back({ PatternType::LeftBrace,  ite.capture });
-			} break;
-			case 2: {
-				patterns.push_back({ PatternType::RightBrace, ite.capture });
-			} break;
-			case 3: {
-				patterns.push_back({ PatternType::Parameter, {ite.capture.data() + 1, ite.capture.size() - 2} });
-			} break;
-			default: assert(false);
+				switch (ite.acception)
+				{
+				case 0: {
+					patterns.push_back({ PatternType::NormalString, ite.capture });
+				} break;
+				case 1: {
+					patterns.push_back({ PatternType::LeftBrace,  ite.capture });
+				} break;
+				case 2: {
+					patterns.push_back({ PatternType::RightBrace, ite.capture });
+				} break;
+				case 3: {
+					patterns.push_back({ PatternType::Parameter, {ite.capture.data() + 1, ite.capture.size() - 2} });
+				} break;
+				default: assert(false);
+				}
 			}
+			return { std::move(patterns) };
 		}
-		return {std::move(patterns)};
+		catch (Nfa::Error::UnaccaptableString const& str)
+		{
+			throw Error::UnsupportPatternString{str.TotalString};
+		}
 	}
 
 	namespace Implement
@@ -65,7 +71,7 @@ namespace PineApple::StrFormat
 		{
 			auto [PIndex, Sum] = LocateParmeters(pattern, pattern_index);
 			if (PIndex < pattern.patterns.size())
-				assert(false);
+				throw Error::LackOfFormatParas{ ExceptionLink(pattern) };
 			return Sum;
 		}
 
@@ -111,6 +117,52 @@ namespace PineApple::StrFormat
 				}
 			}
 			return std::move(Result);
+		}
+
+		std::u32string ExceptionLink(PatternRef const& pattern)
+		{
+			size_t size = 0;
+			for (auto [type, str] : pattern.patterns)
+			{
+				switch (type)
+				{
+				case PatternType::NormalString:
+					size += str.size();
+					break;
+				case PatternType::LeftBrace:
+				case PatternType::Parameter:
+				case PatternType::RightBrace:
+					size += 2;
+					break;
+				default:
+					assert(false);
+					break;
+				}
+			}
+			std::u32string Resource;
+			Resource.reserve(size);
+			for (auto [type, str] : pattern.patterns)
+			{
+				switch (type)
+				{
+				case PatternType::NormalString:
+					Resource += str;
+					break;
+				case PatternType::Parameter:
+					Resource += U"{}";
+					break;
+				case PatternType::LeftBrace:
+					Resource += U"{{";
+					break;
+				case PatternType::RightBrace:
+					Resource += U"}}";
+					break;
+				default:
+					assert(false);
+					break;
+				}
+			}
+			return Resource;
 		}
 	}
 }

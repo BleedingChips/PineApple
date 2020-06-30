@@ -54,6 +54,7 @@ namespace PineApple::StrFormat
 		}
 
 		std::u32string Link(size_t require_space, PatternRef const& pattern, std::vector<std::u32string>& output);
+		std::u32string ExceptionLink(PatternRef const& pattern);
 	}
 
 	template<typename... Type>
@@ -81,6 +82,10 @@ namespace PineApple::StrFormat
 	namespace Error
 	{
 		struct UnsupportPatternString {
+			std::u32string PatternString;
+		};
+
+		struct LackOfFormatParas {
 			std::u32string PatternString;
 		};
 	}

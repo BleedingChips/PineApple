@@ -413,9 +413,11 @@ namespace PineApple::CharEncode
 		return InputSpace;
 	}
 
+
+
 	Ending DetectEnding() {
 		constexpr uint16_t Detect = 0x0001;
-		return *reinterpret_cast<uint8_t const*>(&Detect) == 0x01 ? Ending::Less : Ending::Big;
+		return (*reinterpret_cast<uint8_t const*>(&Detect) == 0x01) ? Ending::Less : Ending::Big;
 	};
 
 	const unsigned char utf8_bom[] = { 0xEF, 0xBB, 0xBF };
@@ -478,6 +480,47 @@ namespace PineApple::CharEncode
 			{
 				for(size_t k =0; k < 4; ++k)
 					std::swap(Bom[i + k], Bom[i + 7 - k]);
+			}
+		}
+	}
+
+	namespace Implement
+	{
+		std::u32string Imp<char32_t>::operator()(std::byte* datas, size_t length)
+		{
+			auto [t, b, s] = FixBinaryWithBom(datas, length);
+			switch (t)
+			{
+			case BomType::None:
+			case BomType::UTF8:
+				return Wrapper(reinterpret_cast<char const*>(b), s).To<char32_t>();
+			case BomType::UTF16BE:
+			case BomType::UTF16LE:
+				return Wrapper(reinterpret_cast<char16_t const*>(b), s).To<char32_t>();
+			case BomType::UTF32BE:
+			case BomType::UTF32LE:
+				return std::u32string(reinterpret_cast<char32_t const*>(b), s);
+			default: assert(false);
+				return {};
+			}
+		}
+
+		std::string Imp<char>::operator()(std::byte* datas, size_t length)
+		{
+			auto [t, b, s] = FixBinaryWithBom(datas, length);
+			switch (t)
+			{
+			case BomType::None:
+			case BomType::UTF8:
+				return std::string(reinterpret_cast<char const*>(b), s);
+			case BomType::UTF16BE:
+			case BomType::UTF16LE:
+				return Wrapper(reinterpret_cast<char16_t const*>(b), s).To<char>();
+			case BomType::UTF32BE:
+			case BomType::UTF32LE:
+				return Wrapper(reinterpret_cast<char32_t const*>(b), s).To<char>();
+			default: assert(false);
+				return {};
 			}
 		}
 	}

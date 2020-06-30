@@ -15,7 +15,8 @@ namespace PineApple::Ebnf
 		Nfa::Table nfa_table;
 		Lr0::Table lr0_table;
 		std::u32string_view FindSymbolString(size_t input, bool IsTerminal) const noexcept;
-		std::optional<std::tuple<size_t, bool>> FindSymbolState(std::u32string_view sym) const noexcept;
+		std::optional<size_t> FindSymbolState(std::u32string_view sym) const noexcept { bool is_terminal; return FindSymbolState(sym, is_terminal); }
+		std::optional<size_t> FindSymbolState(std::u32string_view sym, bool& Isterminal) const noexcept;
 	};
 
 	Table CreateTable(std::u32string_view Code);
@@ -25,6 +26,7 @@ namespace PineApple::Ebnf
 		size_t state;
 		std::u32string_view string;
 		bool is_terminal;
+		Nfa::Location loc;
 		union {
 			struct {
 				size_t mask;
@@ -32,7 +34,7 @@ namespace PineApple::Ebnf
 			}reduce;
 			struct {
 				std::u32string_view capture;
-				Nfa::Location loc;
+				size_t mask;
 			}shift;
 		};
 		bool IsTerminal() const noexcept { return is_terminal; }
@@ -41,11 +43,14 @@ namespace PineApple::Ebnf
 
 	struct Element : Step
 	{
-		std::tuple<size_t, std::u32string_view, std::any>* datas = nullptr;
-		std::tuple<size_t, std::u32string_view, std::any>& operator[](size_t index) { return datas[index]; }
+		std::tuple<size_t, std::u32string_view, std::any, Nfa::Location>* datas = nullptr;
+		std::tuple<size_t, std::u32string_view, std::any, Nfa::Location>& operator[](size_t index) { return datas[index]; }
+		Nfa::Location GetLocation(size_t index) { return std::get<3>((*this)[index]); }
 		decltype(auto) GetRawData(size_t index) { return std::get<2>((*this)[index]); }
 		template<typename Type>
 		decltype(auto) GetData(size_t index) { return std::any_cast<Type>(std::get<2>((*this)[index])); }
+		template<typename Type>
+		Type* TryGetData(size_t index) { return std::any_cast<Type>(&std::get<2>((*this)[index])); }
 		size_t GetAcception(size_t index) { return std::get<0>((*this)[index]); }
 		std::u32string_view GetString(size_t index) { return std::get<1>((*this)[index]); }
 		Element(Step const& ref) : Step(ref) {}
@@ -68,10 +73,22 @@ namespace PineApple::Ebnf
 	inline std::any Process(History const& His, std::any(*Function)(void*, Element&), void* FUnctionBody) { return His(Function, FUnctionBody); }
 	template<typename RespondFunction>
 	std::any Process(History const& ref, RespondFunction&& Func) { return ref(std::forward<RespondFunction>(Func));}
+	template<typename RequireType, typename RespondFunction>
+	RequireType ProcessWrapper(History const& ref, RespondFunction&& Func) { return std::any_cast<RequireType>(ref(std::forward<RespondFunction>(Func))); }
 
 
 	namespace Error
 	{
+
+		struct ExceptionStep
+		{
+			std::u32string Name;
+			bool IsTerminal = false;
+			size_t production_mask = Lr0::ProductionInput::default_mask();
+			size_t production_count = 0;
+			std::u32string capture;
+			Nfa::Location loc;
+		};
 
 		struct MissingStartSymbol {};
 
@@ -80,15 +97,32 @@ namespace PineApple::Ebnf
 			Nfa::Location loc;
 		};
 
+		struct UndefinedNoterminal {
+			std::u32string token;
+		};
+
 		struct UnsetDefaultProductionHead {};
 
 		struct RedefinedStartSymbol {
 			Nfa::Location loc;
 		};
 
-		struct UnaccableToken {
+		struct UnacceptableToken {
 			std::u32string token;
 			Nfa::Location loc;
+		};
+
+		struct UnacceptableSyntax {
+			std::u32string type;
+			std::u32string data;
+			Nfa::Location loction;
+			std::vector<ExceptionStep> exception_step;
+		};
+
+		struct UnacceptableRegex
+		{
+			std::u32string regex;
+			size_t acception_mask;
 		};
 
 		/*

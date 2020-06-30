@@ -33,6 +33,8 @@ int StrToInt(std::u32string_view input)
 	return i;
 }
 
+std::u32string_view EbnfCode1();
+
 int main()
 {
 
@@ -95,62 +97,53 @@ int main()
 
 	std::cout << result << std::endl;
 
-	std::optional<std::filesystem::path> EbnfFile;
-
-	{
-		auto fs = std::filesystem::current_path();
-		fs = fs.parent_path();
-		fs = fs.parent_path();
-		fs = fs.parent_path();
-
-		for (auto Path : std::filesystem::recursive_directory_iterator(fs))
+	Ebnf::Table tab2 = Ebnf::CreateTable(EbnfCode1());
+	int Testing = 1 + 2 + 3 * 4 - 4 / 2 + 2 * +3 * -2;
+	auto His2 = Ebnf::Process(tab2, U"1 + 2 + 3 * 4 - 4 / 2 + 2 * +3 * -2");
+	int result2 = std::any_cast<int>(Ebnf::Process(His2, [](Ebnf::Element& e) -> std::any {
+		if (e.IsTerminal())
 		{
-			if (Path.is_regular_file())
+			if (e.shift.mask == 1)
+				return StrToInt(e.shift.capture);
+		}
+		else {
+			switch (e.reduce.mask)
 			{
-				auto Name = Path.path().filename();
-				if (Name.generic_u32string() == U"expression.ebnf")
-					EbnfFile = Path.path();
+			case 1: return std::move(e.GetRawData(0));
+			case 2: return e.GetData<int>(0) + e.GetData<int>(2);
+			case 3: return e.GetData<int>(0) * e.GetData<int>(2);
+			case 4: return e.GetData<int>(0) / e.GetData<int>(2);
+			case 5: return e.GetData<int>(0) - e.GetData<int>(2);
+			case 6: return std::move(e.GetRawData(1));
 			}
 		}
-	}
+		return {};
+	}));
 
-	if (EbnfFile)
-	{
-		std::ifstream file(*EbnfFile, std::ios::binary);
-		assert(file.is_open());
-		auto fs = std::filesystem::file_size(*EbnfFile);
-		std::vector<std::byte> Datas;
-		Datas.resize(fs);
-		file.read(reinterpret_cast<char*>(Datas.data()), Datas.size());
-		file.close();
-		auto [type, binary, size] = CharEncode::FixBinaryWithBom(Datas.data(), Datas.size());
-		assert(type == CharEncode::BomType::UTF8);
-		auto Re = CharEncode::Wrapper(reinterpret_cast<char const*>(binary), size).To<char32_t>();
-		Ebnf::Table tab = Ebnf::CreateTable(Re);
-		int Testing = 1 + 2 + 3 * 4 - 4 / 2 + 2 * +3 * -2;
-		auto His = Ebnf::Process(tab, U"1 + 2 + 3 * 4 - 4 / 2 + 2 * +3 * -2");
-		int result = std::any_cast<int>(Ebnf::Process(His, [](Ebnf::Element& e) -> std::any {
-			if (e.IsTerminal())
-			{
-				if (e.string == U"Num")
-					return StrToInt(e.shift.capture);
-			}
-			else {
-				switch (e.reduce.mask)
-				{
-				case 1: return std::move(e.GetRawData(0));
-				case 2: return e.GetData<int>(0) + e.GetData<int>(2);
-				case 3: return e.GetData<int>(0) * e.GetData<int>(2);
-				case 4: return e.GetData<int>(0) / e.GetData<int>(2);
-				case 5: return e.GetData<int>(0) - e.GetData<int>(2);
-				case 6: return std::move(e.GetRawData(1));
-				}
-			}
-			return {};
-		}));
-
-		std::cout << result << std::endl;
-	}
+	std::cout << result2 << std::endl;
 
 	system("pause");
+}
+
+std::u32string_view EbnfCode1()
+{
+	return UR"(
+_IGNORE := '\s'
+Num := '(\+|\-)?[1-9][0-9]*' : [1]
+
+%%%
+
+$ := <Exp>
+
+<Exp> := Num : [1]
+    := <Exp> '+' <Exp> : [2]
+    := <Exp> '*' <Exp> : [3]
+    := <Exp> '/' <Exp> : [4]
+    := <Exp> '-' <Exp> : [5]
+    := '(' <Exp> ')' : [6]
+
+%%%
+
+('*' '/') ('+' '-')
+)";
 }

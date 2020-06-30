@@ -129,12 +129,14 @@ namespace PineApple::Lr0
 			}
 			else {
 				Symbol Sym = GetSymbol(Cur.search.TokenIndex, TokenArray, TokenLength);
-				bool re = HandleInputToken(Table, Steps, Cur.search, Sym, Cur.search.TokenIndex++);
+				bool re = HandleInputToken(Table, Steps, Cur.search, Sym, Cur.search.TokenIndex);
 				if (re) {
 					if (Sym == Symbol::EndOfFile())
 						return { std::move(Steps) };
-					else
+					else {
+						++Cur.search.TokenIndex;
 						ExpandProductions(Table, std::move(Cur.search), SearchStack, GetSymbol(Cur.search.TokenIndex, TokenArray, TokenLength), Table.force_reduce);
+					}
 				}else {
 					if (MaxTokenUsed < Cur.search.TokenIndex)
 					{
@@ -255,13 +257,21 @@ namespace PineApple::Lr0
 					auto TargetSymbol = (*Target)[SymbolIndex];
 					if (TargetSymbol.IsNoTerminal())
 					{
+						bool Finded = false;
 						for (size_t i = 0; i < Productions.size(); ++i)
 						{
 							if (Productions[i].production[0] == TargetSymbol)
+							{
+								Finded = true;
 								SearchStack.push_back({ i, 1 });
+							}
 						}
-						if (AddProduction[0] == TargetSymbol)
+						if (AddProduction[0] == TargetSymbol) {
+							Finded = true;
 							SearchStack.push_back({ Productions.size(), 1 });
+						}
+						if (!Finded)
+							throw Error::NoterminalUndefined{ TargetSymbol };
 					}
 				}
 			}
