@@ -16,51 +16,69 @@
     <Filter Include="PineApple">
       <UniqueIdentifier>{48393dba-3b15-4b71-ad5c-1f58b87b5780}</UniqueIdentifier>
     </Filter>
-    <Filter Include="PineApple\Implement">
-      <UniqueIdentifier>{8a923ef7-f54c-45c5-838f-14b12ba34f52}</UniqueIdentifier>
+    <Filter Include="PineApple\Public">
+      <UniqueIdentifier>{bb7a41c3-fbb5-4a41-b9f8-5ee11a22b295}</UniqueIdentifier>
     </Filter>
-    <Filter Include="PineApple\Interface">
-      <UniqueIdentifier>{3dccf69a-3325-4ef0-aa13-180102faa730}</UniqueIdentifier>
+    <Filter Include="PineApple\Private">
+      <UniqueIdentifier>{b745f54a-1dfd-464e-abef-4686c7e59083}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\PineApple\Implment\CharEncode.cpp">
-      <Filter>PineApple\Implement</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\PineApple\Implment\Ebnf.cpp">
-      <Filter>PineApple\Implement</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\PineApple\Implment\Lr0.cpp">
-      <Filter>PineApple\Implement</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\PineApple\Implment\StrFormat.cpp">
-      <Filter>PineApple\Implement</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\PineApple\Implment\Nfa.cpp">
-      <Filter>PineApple\Implement</Filter>
-    </ClCompile>
     <ClCompile Include="main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\PineApple\Private\Ebnf.cpp">
+      <Filter>PineApple\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\PineApple\Private\Lexical.cpp">
+      <Filter>PineApple\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\PineApple\Private\Lr0.cpp">
+      <Filter>PineApple\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\PineApple\Private\StrEncode.cpp">
+      <Filter>PineApple\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\PineApple\Private\StrFormat.cpp">
+      <Filter>PineApple\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\PineApple\Private\StrScanner.cpp">
+      <Filter>PineApple\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\PineApple\Private\Symbol.cpp">
+      <Filter>PineApple\Private</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\PineApple\Private\Unfa.cpp">
+      <Filter>PineApple\Private</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\PineApple\Interface\CharEncode.h">
-      <Filter>PineApple\Interface</Filter>
+    <ClInclude Include="..\..\PineApple\Public\Ebnf.h">
+      <Filter>PineApple\Public</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\PineApple\Interface\Ebnf.h">
-      <Filter>PineApple\Interface</Filter>
+    <ClInclude Include="..\..\PineApple\Public\Interval.h">
+      <Filter>PineApple\Public</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\PineApple\Interface\Lr0.h">
-      <Filter>PineApple\Interface</Filter>
+    <ClInclude Include="..\..\PineApple\Public\Lexical.h">
+      <Filter>PineApple\Public</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\PineApple\Interface\Nfa.h">
-      <Filter>PineApple\Interface</Filter>
+    <ClInclude Include="..\..\PineApple\Public\Lr0.h">
+      <Filter>PineApple\Public</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\PineApple\Interface\StrFormat.h">
-      <Filter>PineApple\Interface</Filter>
+    <ClInclude Include="..\..\PineApple\Public\StrEncode.h">
+      <Filter>PineApple\Public</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\PineApple\Interface\Range.h">
-      <Filter>PineApple\Interface</Filter>
+    <ClInclude Include="..\..\PineApple\Public\StrFormat.h">
+      <Filter>PineApple\Public</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\PineApple\Public\StrScanner.h">
+      <Filter>PineApple\Public</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\PineApple\Public\Symbol.h">
+      <Filter>PineApple\Public</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\PineApple\Public\Unfa.h">
+      <Filter>PineApple\Public</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

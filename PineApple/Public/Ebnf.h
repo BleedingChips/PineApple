@@ -1,18 +1,21 @@
 #pragma once
 #include "Lr0.h"
-#include "Nfa.h"
-
+#include "Lexical.h"
+#include <assert.h>
 namespace PineApple::Ebnf
 {
 
 	using Symbol = Lr0::Symbol;
+	using SectionPoint = Lexical::SectionPoint;
+	using Section = Lexical::Section;
 
 	struct Table
 	{
 		std::u32string symbol_table;
+		std::vector<size_t> state_to_mask;
+		Lexical::Table lexical_table;
 		std::vector<std::tuple<std::size_t, std::size_t>> symbol_map;
 		size_t ter_count;
-		Nfa::Table nfa_table;
 		Lr0::Table lr0_table;
 		std::u32string_view FindSymbolString(size_t input, bool IsTerminal) const noexcept;
 		std::optional<size_t> FindSymbolState(std::u32string_view sym) const noexcept { bool is_terminal; return FindSymbolState(sym, is_terminal); }
@@ -23,36 +26,48 @@ namespace PineApple::Ebnf
 
 	struct Step
 	{
-		size_t state;
+		size_t state = 0;
 		std::u32string_view string;
-		bool is_terminal;
-		Nfa::Location loc;
+		bool is_terminal = false;
+		Section section;
 		union {
 			struct {
-				size_t mask;
-				size_t production_count;
+				size_t mask = 0;
+				size_t production_count = 0;
 			}reduce;
 			struct {
-				std::u32string_view capture;
-				size_t mask;
+				std::u32string_view capture = 0;
+				size_t mask = 0;
 			}shift;
 		};
+		Step(){}
 		bool IsTerminal() const noexcept { return is_terminal; }
 		bool IsNoterminal() const noexcept { return !IsTerminal(); }
 	};
 
 	struct Element : Step
 	{
-		std::tuple<size_t, std::u32string_view, std::any, Nfa::Location>* datas = nullptr;
-		std::tuple<size_t, std::u32string_view, std::any, Nfa::Location>& operator[](size_t index) { return datas[index]; }
-		Nfa::Location GetLocation(size_t index) { return std::get<3>((*this)[index]); }
-		decltype(auto) GetRawData(size_t index) { return std::get<2>((*this)[index]); }
-		template<typename Type>
-		decltype(auto) GetData(size_t index) { return std::any_cast<Type>(std::get<2>((*this)[index])); }
-		template<typename Type>
-		Type* TryGetData(size_t index) { return std::any_cast<Type>(&std::get<2>((*this)[index])); }
-		size_t GetAcception(size_t index) { return std::get<0>((*this)[index]); }
-		std::u32string_view GetString(size_t index) { return std::get<1>((*this)[index]); }
+		struct Property : Step
+		{
+			Property() {}
+			Property(Step step, std::any datas) : Step(step), data(std::move(datas)){}
+			Property(Property const&) = default;
+			Property(Property&&) = default;
+			Property& operator=(Property&& p) = default;
+			Property& operator=(Property const& p) = default;
+			std::any data;
+			template<typename Type>
+			Type GetData() { return std::any_cast<Type>(data); }
+			template<typename Type>
+			Type* TryGetData() { return std::any_cast<Type>(&data); }
+			template<typename Type>
+			std::remove_reference_t<Type> MoveData() { return std::move(std::any_cast<std::add_lvalue_reference_t<Type>>(data)); }
+			std::any MoveRawData() { return std::move(data); }
+		};
+		Property* datas = nullptr;
+		Property& operator[](size_t index) { return datas[index]; }
+		Property* begin() {assert(Step::IsNoterminal()); return datas;}
+		Property* end() {assert(Step::IsNoterminal()); return datas + reduce.production_count;}
 		Element(Step const& ref) : Step(ref) {}
 	};
 
@@ -67,6 +82,7 @@ namespace PineApple::Ebnf
 			};
 			return operator()(FunctionImp, static_cast<void*>(&Func));
 		}
+		std::vector<std::u32string> Expand() const;
 	};
 
 	History Process(Table const& Tab, std::u32string_view Code);
@@ -82,19 +98,19 @@ namespace PineApple::Ebnf
 
 		struct ExceptionStep
 		{
-			std::u32string Name;
-			bool IsTerminal = false;
+			std::u32string name;
+			bool is_terminal = false;
 			size_t production_mask = Lr0::ProductionInput::default_mask();
 			size_t production_count = 0;
 			std::u32string capture;
-			Nfa::Location loc;
+			Section section;
 		};
 
 		struct MissingStartSymbol {};
 
 		struct UndefinedTerminal {
 			std::u32string token;
-			Nfa::Location loc;
+			Section section;
 		};
 
 		struct UndefinedNoterminal {
@@ -104,19 +120,24 @@ namespace PineApple::Ebnf
 		struct UnsetDefaultProductionHead {};
 
 		struct RedefinedStartSymbol {
-			Nfa::Location loc;
+			Section section;
+		};
+
+		struct UncompleteEbnf
+		{
+			size_t used;
 		};
 
 		struct UnacceptableToken {
 			std::u32string token;
-			Nfa::Location loc;
+			Section section;
 		};
 
 		struct UnacceptableSyntax {
 			std::u32string type;
 			std::u32string data;
-			Nfa::Location loction;
-			std::vector<ExceptionStep> exception_step;
+			Section section;
+			std::vector<std::u32string> exception_step;
 		};
 
 		struct UnacceptableRegex
@@ -136,8 +157,10 @@ namespace PineApple::Ebnf
 
 namespace PineApple::StrFormat
 {
+	/*
 	template<> struct Formatter<Ebnf::Table>
 	{
 		std::u32string operator()(std::u32string_view, Ebnf::Table const& ref);
 	};
+	*/
 }

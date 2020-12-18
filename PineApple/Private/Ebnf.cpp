@@ -1,4 +1,5 @@
-#include "../Interface/Ebnf.h"
+#include "../Public/Ebnf.h"
+#include "../Public/StrFormat.h"
 #include <assert.h>
 #include <vector>
 
@@ -11,7 +12,6 @@ namespace PineApple::Ebnf
 		Line,
 		Terminal,
 		Equal,
-		Mask,
 		Rex,
 		NoTerminal,
 		StartSymbol,
@@ -26,6 +26,7 @@ namespace PineApple::Ebnf
 		Colon,
 		Command,
 		TokenMax,
+		Ignore, // ^
 	};
 
 	constexpr Lr0::Symbol operator*(T sym) { return Lr0::Symbol{ static_cast<size_t>(sym), Lr0::TerminalT{} }; };
@@ -88,132 +89,101 @@ namespace PineApple::Ebnf
 		return std::nullopt;
 	}
 
-	std::tuple<std::vector<Symbol>, std::vector<Nfa::DocumenetMarchElement>> DefaultLexer(Nfa::Table const& table, std::u32string_view& input)
+	std::tuple<std::vector<Symbol>, std::vector<Lexical::March>> DefaultLexer(Lexical::Table const& table, std::u32string_view input)
 	{
 		std::vector<Symbol> R1;
-		std::vector<Nfa::DocumenetMarchElement> R2;
-		Nfa::Location Loc;
-		while (!input.empty())
+		std::vector<Lexical::March> R2 = table.Process(input);
+		for(auto& ite : R2)
+			R1.push_back(Symbol(ite.mask, Lr0::TerminalT{}));
+		return { std::move(R1), std::move(R2) };
+	}
+
+	History Translate(Table const& Tab, Lr0::History const& Steps, std::vector<Lexical::March> const& Datas)
+	{
+		std::vector<Step> AllStep;
+		AllStep.reserve(Steps.steps.size());
+		Section LastSection;
+		std::vector<size_t> TemporaryNoTerminalList;
+		std::vector<std::optional<size_t>> SimulateProduction;
+		for (auto& Ite : Steps.steps)
 		{
-			auto Re = Nfa::DecumentComsume(table, input, Loc);
-			assert(Re);
-			input = Re->march.last_string;
-			if (Re->march.acception != 0)
+			Step Result{};
+			Result.state = Ite.value.Index();
+			Result.is_terminal = Ite.IsTerminal();
+			Result.string = Tab.FindSymbolString(Result.state, Result.is_terminal);
+			if(!Result.string.empty() && Result.is_terminal)
 			{
-				R1.push_back(Symbol(Re->march.acception, Lr0::TerminalT{}));
-				R2.push_back(*Re);
+				auto& DatasRef = Datas[Ite.shift.token_index];
+				Result.section = DatasRef.section;
+				LastSection = DatasRef.section;
+				Result.shift.capture = DatasRef.capture;
+				Result.shift.mask = Tab.state_to_mask[DatasRef.acception];
+				AllStep.push_back(Result);
+				SimulateProduction.push_back(std::nullopt);
+			}else
+			{
+				assert(Result.IsNoterminal());
+				size_t ProCount = Ite.reduce.production_count;
+				size_t Used = 0;
+				size_t UsedSimulateCount = 0;
+				size_t StartPosition = SimulateProduction.size() - ProCount;
+				for (size_t i = SimulateProduction.size(); i > StartPosition; --i)
+				{
+					if (!SimulateProduction[i - 1].has_value())
+					{
+						++Used;
+					}
+					else
+					{
+						assert(!TemporaryNoTerminalList.empty());
+						Used += *TemporaryNoTerminalList.rbegin();
+						TemporaryNoTerminalList.pop_back();
+					}
+					++UsedSimulateCount;
+				}
+				SimulateProduction.resize(SimulateProduction.size() - UsedSimulateCount);
+				if(Result.string.empty())
+				{
+					TemporaryNoTerminalList.push_back(Used);
+					SimulateProduction.push_back(TemporaryNoTerminalList.size());
+				}else
+				{
+					Result.reduce.mask = Ite.reduce.mask;
+					Result.reduce.production_count = Used;
+					Result.section = LastSection;
+					SimulateProduction.push_back(std::nullopt);
+					AllStep.push_back(Result);
+				}
 			}
 		}
-		return { std::move(R1), std::move(R2) };
+		return { std::move(AllStep) };
 	}
 
 	History Process(Table const& Tab, std::u32string_view Code)
 	{
-		auto [Symbols, Datas] = DefaultLexer(Tab.nfa_table, Code);
+		auto [Symbols, Datas] = DefaultLexer(Tab.lexical_table, Code);
 
 		try{
 			auto Steps = Lr0::Process(Tab.lr0_table, Symbols.data(), Symbols.size());
-			std::vector<Step> AllStep;
-			AllStep.reserve(Steps.steps.size());
-			Nfa::Location LastLocation;
-			size_t DataCount = 0;
-			std::vector<std::tuple<size_t, size_t>> TemporaryNoTerminal;
-			for (auto& Ite : Steps.steps)
-			{
-				Step Result{};
-				Result.state = Ite.value.Index();
-				Result.is_terminal = Ite.IsTerminal();
-				Result.string = Tab.FindSymbolString(Result.state, Result.is_terminal);
-				if (!Result.string.empty())
-				{
-					if (Result.is_terminal)
-					{
-						auto& DatasRef = Datas[Ite.shift.token_index];
-						Result.loc = DatasRef.location;
-						LastLocation = DatasRef.location;
-						Result.shift.capture = DatasRef.march.capture;
-						Result.shift.mask = DatasRef.march.mask;
-						DataCount += 1;
-					}
-					else {
-						Result.reduce.mask = Ite.reduce.mask;
-						size_t ProCount = Ite.reduce.production_count;
-						size_t Used = ProCount;
-						while (!TemporaryNoTerminal.empty())
-						{
-							auto [Index, Count] = *TemporaryNoTerminal.rbegin();
-							if (Index + ProCount >= DataCount)
-							{
-								TemporaryNoTerminal.pop_back();
-								Used += Count;
-								Used -= 1;
-							}
-							else
-								break;
-						}
-						assert(DataCount >= ProCount);
-						DataCount -= ProCount;
-						DataCount += 1;
-						Result.reduce.production_count = Used;
-						Result.loc = LastLocation;
-					}
-					AllStep.push_back(Result);
-				}
-				else {
-					assert(Result.IsNoterminal());
-					TemporaryNoTerminal.push_back({ DataCount, Ite.reduce.production_count});
-					assert(DataCount >= Ite.reduce.production_count);
-					DataCount -= Ite.reduce.production_count;
-					DataCount += 1;
-				}
-			}
-			return { std::move(AllStep) };
+			return Translate(Tab, Steps, Datas);
 		}
 		catch (Lr0::Error::UnaccableSymbol const& Symbol)
 		{
+			auto his = Translate(Tab, Symbol.backup_step, Datas);
 			auto Str = Tab.FindSymbolString(Symbol.symbol.Index(), Symbol.symbol.IsTerminal());
-
-			std::vector<Error::ExceptionStep> re;
-			int TemporaryUsed = 0;
-			re.reserve(Symbol.backup_step.size());
-			for (auto& ite : Symbol.backup_step)
-			{
-				Error::ExceptionStep step;
-				step.Name = Tab.FindSymbolString(ite.value.Index(), ite.IsTerminal());
-				if (!step.Name.empty())
-				{
-					if (ite.IsTerminal())
-					{
-						auto& Data = Datas[ite.shift.token_index];
-						step.capture = Data.march.capture;
-						step.loc = Data.location;
-					}
-					else {
-						step.production_mask = ite.reduce.mask;
-						assert(ite.reduce.production_count >= TemporaryUsed);
-						step.production_count = ite.reduce.production_count + TemporaryUsed;
-						TemporaryUsed = 0;
-					}
-					re.push_back(step);
-				}
-				else {
-					assert(ite.IsNoTerminal());
-					TemporaryUsed += static_cast<int>(ite.reduce.production_count) - 1;
-				}
-			}
 			if (Str.empty())
 			{
-				Nfa::Location loc = (Symbol.index > 0) ? Datas[Symbol.index - 1].location : Nfa::Location{};
-				throw Error::UnacceptableSyntax{ U"$_Eof", U"$_Eof", loc, std::move(re) };
+				Section loc = (Symbol.index > 0) ? Datas[Symbol.index - 1].section : Section{};
+				throw Error::UnacceptableSyntax{ U"$_Eof", U"$_Eof", loc, his.Expand() };
 			}
-			throw Error::UnacceptableSyntax{ std::u32string(Str), std::u32string(Datas[Symbol.symbol.Index()].march.capture),Datas[Symbol.symbol.Index()].location, std::move(re) };
+			auto loc = Datas[Symbol.symbol.Index()].section;
+			throw Error::UnacceptableSyntax{ std::u32string(Str), std::u32string(Datas[Symbol.index].capture),Datas[Symbol.index].section, his.Expand() };
 		}
 	}
 
 	std::any History::operator()(std::any(*Function)(void*, Element&), void* FunctionBody) const
 	{
-		std::vector<std::tuple<size_t, std::u32string_view, std::any, Nfa::Location>> Storage;
-		int append = 0;
+		std::vector<Element::Property> Storage;
 		for (auto& ite : steps)
 		{
 			if (ite.IsTerminal())
@@ -221,51 +191,102 @@ namespace PineApple::Ebnf
 				Element Re(ite);
 				Re.datas = nullptr;
 				auto Result = (*Function)(FunctionBody, Re);
-				Storage.push_back({ ite.state, ite.string, std::move(Result), ite.loc });
+				Storage.push_back({ ite, std::move(Result) });
 			}
 			else {
 				Element Re(ite);
-				size_t TotalUsed = ite.reduce.production_count + append;
+				size_t TotalUsed = ite.reduce.production_count;
 				size_t CurrentAdress = Storage.size() - TotalUsed;
 				Re.datas = Storage.data() + CurrentAdress;
 				if (TotalUsed >= 1)
 				{
-					Re.loc = std::get<3>(Re.datas[0]);
-					auto Tar = std::get<3>(Re.datas[TotalUsed - 1]);
-					Re.loc.length = Tar.total_index - Re.loc.total_index + Tar.length;
+					Re.section = {Re[0].section.start, Re[TotalUsed - 1].section.end};
 				}
 				else {
-					Re.loc = ite.loc;
+					Re.section = ite.section;
 				}
 				auto Result = (*Function)(FunctionBody, Re);
 				Storage.resize(CurrentAdress);
-				Storage.push_back({ Re.state, Re.string, std::move(Result), Re.loc });
+				Storage.push_back({ ite, std::move(Result) });
 			}
 		}
 		assert(Storage.size() == 1);
-		return std::move(std::get<2>(Storage[0]));
+		return std::move(Storage[0].data);
 	}
 
-	std::tuple<std::vector<Symbol>, std::vector<Nfa::DocumenetMarchElement>> EbnfLexer(Nfa::Table const& table, std::u32string_view& input, std::set<size_t> const& Remove, Nfa::Location& Loc)
+	std::u32string ExpandExe(std::vector<std::u32string_view> ts)
+	{
+		std::u32string result;
+		static auto pattern = StrFormat::CreatePatternRef(U"{} ");
+		for (auto& ite : ts)
+		{
+			result += StrFormat::Process(pattern, ite);
+		}
+		return result;
+	}
+
+	std::vector<std::u32string> History::Expand() const
+	{
+		std::vector<std::u32string> result;
+		std::vector<std::u32string_view> all_token;
+		bool InputTerminal = false;
+		for (auto& ite : steps)
+		{
+			if (ite.IsTerminal())
+			{
+				all_token.push_back(ite.shift.capture);
+				InputTerminal = true;
+			}
+			else {
+				if (InputTerminal)
+				{
+					auto re = ExpandExe(all_token);
+					result.push_back(std::move(re));
+					InputTerminal = false;
+				}
+				assert(all_token.size() >= ite.reduce.production_count);
+				all_token.resize(all_token.size() - ite.reduce.production_count);
+				all_token.push_back(ite.string);
+				auto re = ExpandExe(all_token);
+				result.push_back(std::move(re));
+			}
+		}
+		if (!all_token.empty())
+			result.push_back(ExpandExe(all_token));
+		return result;
+	}
+
+	struct PreEbnfInitTuple
+	{
+		T symbol;
+		bool ignore = false;
+	};
+
+	Lexical::Table CreateLexicalTable(std::map<T, std::u32string_view> const& mapping, PreEbnfInitTuple const* init_tuple, size_t length)
+	{
+		std::vector<Lexical::LexicalRegexInitTuple> true_tuple;
+		true_tuple.reserve(length);
+		for(size_t i =0; i < length; ++i)
+		{
+			auto& ref = init_tuple[i];
+			auto Find = mapping.find(ref.symbol);
+			assert(Find != mapping.end());
+			true_tuple.push_back({Find->second, ref.ignore ? Lexical::DefaultIgnoreMask() : static_cast<size_t>(Find->first)});
+		}
+		return Lexical::CreateLexicalFromRegexs(true_tuple.data(), true_tuple.size());
+	}
+
+	std::tuple<std::vector<Symbol>, std::vector<Lexical::March>> EbnfLexer(Lexical::Table const& table, std::u32string_view input, Section& Loc)
 	{
 		std::vector<Symbol> R1;
-		std::vector<Nfa::DocumenetMarchElement> R2;
-		while (!input.empty())
+		std::vector<Lexical::March> R2 = table.Process(input);
+		R1.reserve(R2.size());
+		for(auto& ite : R2)
+			R1.push_back(Symbol(ite.mask, Lr0::TerminalT{}));
+		if(!R2.empty())
 		{
-			auto Re = Nfa::DecumentComsume(table, input, Loc);
-			if (Re)
-			{
-				input = Re->march.last_string;
-				if (Re->march.acception == static_cast<size_t>(T::Mask)) { break; }
-				auto Ite = Remove.find(Re->march.acception);
-				if (Ite == Remove.end())
-				{
-					R1.push_back(Symbol(Re->march.acception, Lr0::TerminalT{}));
-					R2.push_back(*Re);
-				}
-			}
-			else
-				throw Error::UnacceptableToken{ {}, Loc };
+			Loc.start = Loc.end;
+			Loc.end = Loc.end + R2.rbegin()->section.end;
 		}
 		return { std::move(R1), std::move(R2) };
 	}
@@ -275,11 +296,10 @@ namespace PineApple::Ebnf
 
 		static std::map<T, std::u32string_view> Rexs = {
 			{T::Empty, UR"(\s)" },
-			{T::Line, U"\r\n|\n"},
+			{T::Line, UR"(\n)"},
 			{T::Terminal, UR"([a-zA-Z_][a-zA-Z_0-9]*)"},
 			{T::Equal, UR"(:=)"},
-			{T::Mask, UR"(%%%\s*?\n)"},
-			{T::Rex, UR"('.*?[^\\]')"},
+			{T::Rex, UR"('([^\']|(\\\'))*?')"},
 			{T::NoTerminal, UR"(\<[_a-zA-Z][_a-zA-Z0-9]*\>)"},
 			{T::StartSymbol, UR"(\$)"},
 			{T::LB_Brace, UR"(\{)"},
@@ -290,44 +310,76 @@ namespace PineApple::Ebnf
 			{T::RS_Brace, UR"(\))"},
 			{T::Colon, UR"(:)"},
 			{T::Or, UR"(\|)"},
+			{T::Ignore, UR"(\^)"},
 			{T::Number, UR"([1-9][0-9]*|0)"},
-			{T::Command, UR"(/\*[.\n]*?\*/|//.*?\n)"},
+			{T::Command, UR"(/\*.*?\*/|//.*?\n)"},
 		};
 
-		std::map<std::u32string, size_t> symbol_to_index;
-		std::vector<std::tuple<std::u32string, size_t, size_t>> symbol_rex;
+		static Unfa::Table sperator = Unfa::CreateUnfaTableFromRegex(UR"((.*?)(?:\r\n|\n)[\f\t\v\r]*?%%%[\s]*?\n|()[\f\t\v\r]*?%%%[\s]*?\n)").Simplify();
 
-		symbol_to_index.insert({ U"_IGNORE", 0 });
+		struct SperatedCode
+		{
+			std::u32string_view code;
+			Section section;
+		};
+		SperatedCode sperated_code[3];
 
-		Nfa::Location Loc;
+		{
+			size_t used = 0;
+			SectionPoint Point;
+			while (!code.empty() && used < 3)
+			{
+				auto P = sperator.Mark(code, false);
+				auto next_point = Lexical::CalculateSectionPoint(P->capture.string);
+				if (P)
+				{
+					auto new_point = Lexical::CalculateSectionPoint(P->sub_capture[0].string);
+					sperated_code[used] = { P->sub_capture[0].string, {Point, new_point} };
+					code = { code.begin() + P->capture.string.size(), code.end() };
+				}
+				else
+				{
+					sperated_code[used] = { code, {Point, next_point} };
+					code = {};
+					break;
+				}
+				Point = next_point;
+				++used;
+			}
+
+			if (used < 2)
+				throw Error::UncompleteEbnf{ used };
+		}
+		
+		std::vector<size_t> state_to_mask;
+		std::map<std::u32string, size_t> symbol_to_mask;
+		std::vector<std::tuple<std::u32string, size_t>> symbol_rex;
+		//std::vector<Lexical::LexicalRegexInitTuple> symbol_rex;
 
 		// step1
 		{
 
-			static Nfa::Table nfa_table = ([]() -> Nfa::Table {
-				std::vector<T> RequireList = { T::LM_Brace, T::RM_Brace, T::Number, T::Colon, T::Terminal, T::Equal, T::Mask, T::Rex, T::Line, T::Command, T::Empty };
-				std::vector<size_t> States;
-				std::vector<std::u32string_view> RexStroage;
-				for (auto& ite : RequireList)
-				{
-					States.push_back(static_cast<size_t>(ite));
-					RexStroage.push_back(Rexs[ite]);
-				}
-				return Nfa::CreateTableFromRex(RexStroage.data(), States.data(), States.data(), RequireList.size());
+			static Lexical::Table nfa_table = ([]() -> Lexical::Table {
+				PreEbnfInitTuple RequireList[] = {
+					{T::LM_Brace}, {T::RM_Brace}, {T::Number}, {T::Colon}, {T::Terminal},
+					{T::Equal}, {T::Rex}, {T::Line}, {T::Command, true}, {T::Empty, true }, {T::Ignore}
+				};
+				return CreateLexicalTable(Rexs, RequireList, std::size(RequireList));
 			}());
 
 			static Lr0::Table lr0_instance = Lr0::CreateTable(
 				*NT::Statement, {
 					{{*NT::Statement, *NT::Statement, *T::Terminal, *T::Equal, *T::Rex, *NT::FunctionEnum, *T::Line}, 1},
+					{{*NT::Statement, *NT::Statement, *T::Ignore, *T::Equal, *T::Rex, *T::Line}, 7},
 					{{*NT::Statement}, 3},
 					{{*NT::FunctionEnum, *T::Colon, *T::LM_Brace, *T::Number, *T::RM_Brace}, 5},
 					{{*NT::FunctionEnum}, 6},
 					//{{*SYM::Statement,*SYM::Statement,  *SYM::Mask}},
-					{{*NT::Statement,*NT::Statement,  *T::Line}, 4}
+					{{*NT::Statement, *NT::Statement,  *T::Line}, 4}
 				}, {}
 			);
-
-			auto [Symbols, Elements] = EbnfLexer(nfa_table, code, { static_cast<size_t>(T::Empty), static_cast<size_t>(T::Command) }, Loc);
+			Section Loc;
+			auto [Symbols, Elements] = EbnfLexer(nfa_table, sperated_code[0].code, Loc);
 			try {
 				auto History = Lr0::Process(lr0_instance, Symbols.data(), Symbols.size());
 				Lr0::Process(History, [&](Lr0::Element& input) -> std::any {
@@ -336,15 +388,15 @@ namespace PineApple::Ebnf
 						switch (input.value)
 						{
 						case* T::Terminal: {
-							return Elements[input.shift.token_index].march.capture;
+							return Elements[input.shift.token_index].capture;
 						}break;
 						case* T::Rex: {
-							auto re = Elements[input.shift.token_index].march.capture;
+							auto re = Elements[input.shift.token_index].capture;
 							return  std::u32string_view(re.data() + 1, re.size() - 2);
 						}break;
 						case* T::Number: {
 							size_t Number = 0;
-							for (auto ite : Elements[input.shift.token_index].march.capture)
+							for (auto ite : Elements[input.shift.token_index].capture)
 								Number = Number * 10 + ite - U'0';
 							return Number;
 						} break;
@@ -357,19 +409,26 @@ namespace PineApple::Ebnf
 						case 1: {
 							auto Token = input.GetData<std::u32string_view>(1);
 							auto Rex = input.GetData<std::u32string_view>(3);
-							auto re = symbol_to_index.insert({ std::u32string(Token), static_cast<size_t>(symbol_to_index.size()) });
-							symbol_rex.push_back({ std::u32string(Rex), re.first->second, input.GetData<size_t>(4) });
+							auto re = symbol_to_mask.insert({ std::u32string(Token), static_cast<size_t>(symbol_to_mask.size()) });
+							state_to_mask.push_back(input.GetData<size_t>(4));
+							symbol_rex.push_back({ std::u32string(Rex), re.first->second });
 						}break;
+						case 7: {
+							auto Rex = input.GetData<std::u32string_view>(3);
+							symbol_rex.push_back({ std::u32string(Rex), Lexical::DefaultIgnoreMask() });
+							state_to_mask.push_back(Lexical::DefaultMask());
+						} break;
 						case 5: {
 							return input.GetData<size_t>(2);
 						}break;
 						case 6: {
-							return std::numeric_limits<size_t>::max();
+							return Lexical::DefaultMask();
 						} break;
 						case 4:
 							return false;
+						case 3:
 							break;
-						default: break;
+						default: assert(false); break;
 						}
 					}
 					return {};
@@ -377,8 +436,9 @@ namespace PineApple::Ebnf
 			}
 			catch (Lr0::Error::UnaccableSymbol const& US)
 			{
+				assert(Elements.size() > US.index);
 				auto P = Elements[US.index];
-				throw Error::UnacceptableToken{ std::u32string(P.march.capture), P.location};
+				throw Error::UnacceptableToken{ std::u32string(P.capture), P.section};
 			}
 			
 		}
@@ -392,7 +452,7 @@ namespace PineApple::Ebnf
 		struct Token
 		{
 			Symbol sym;
-			Nfa::DocumenetMarchElement march;
+			Lexical::March march;
 		};
 
 		//std::map<lr1::storage_t, std::tuple<std::variant<OrRelationShift, MBraceRelationShift, BBraceRelationShift>, size_t>> temporary_noterminal_production_debug;
@@ -400,19 +460,12 @@ namespace PineApple::Ebnf
 		// step2
 		{
 
-			static Nfa::Table nfa_instance = ([]() -> Nfa::Table {
-				std::vector<T> RequireList = {
-					T::Or, T::StartSymbol, T::Colon, T::Terminal, T::Equal, T::Number, T::NoTerminal, T::Mask, T::Rex, T::Line,
-					T::LS_Brace, T::RS_Brace, T::LM_Brace, T::RM_Brace, T::LB_Brace, T::RB_Brace, T::Command, T::Empty
+			static Lexical::Table nfa_instance = ([]() -> Lexical::Table {
+				PreEbnfInitTuple RequireList[] = {
+					{T::Or}, {T::StartSymbol}, {T::Colon}, {T::Terminal}, {T::Equal}, {T::Number}, {T::NoTerminal}, {T::Rex}, {T::Line},
+					{T::LS_Brace}, {T::RS_Brace}, {T::LM_Brace}, {T::RM_Brace}, {T::LB_Brace}, {T::RB_Brace}, {T::Command, true}, {T::Empty, true}
 				};
-				std::vector<size_t> States;
-				std::vector<std::u32string_view> RexStroage;
-				for (auto& ite : RequireList)
-				{
-					States.push_back(static_cast<size_t>(ite));
-					RexStroage.push_back(Rexs[ite]);
-				}
-				return Nfa::CreateTableFromRex(RexStroage.data(), States.data(), States.data(), RequireList.size());
+				return CreateLexicalTable(Rexs, RequireList, std::size(RequireList));
 			}());
 
 
@@ -466,7 +519,9 @@ namespace PineApple::Ebnf
 
 			using SymbolList = std::vector<Symbol>;
 
-			auto [Symbols, Elements] = EbnfLexer(nfa_instance, code, { static_cast<size_t>(T::Empty), static_cast<size_t>(T::Command) }, Loc);
+			Section Loc = sperated_code[0].section;
+			
+			auto [Symbols, Elements] = EbnfLexer(nfa_instance, sperated_code[1].code, Loc);
 
 
 			try {
@@ -475,15 +530,15 @@ namespace PineApple::Ebnf
 					if (tra.IsTerminal())
 					{
 						auto& element = Elements[tra.shift.token_index];
-						auto string = std::u32string(element.march.capture);
+						auto string = std::u32string(element.capture);
 						switch (tra.value)
 						{
 						case* T::Terminal: {
-							auto Find = symbol_to_index.find(string);
-							if (Find != symbol_to_index.end())
+							auto Find = symbol_to_mask.find(string);
+							if (Find != symbol_to_mask.end())
 								return Token{ Symbol(Find->second, Lr0::TerminalT{}), element };
 							else
-								throw Error::UndefinedTerminal{ string, element.location };
+								throw Error::UndefinedTerminal{ string, element.section };
 						}break;
 						case* T::NoTerminal: {
 							auto Find = noterminal_symbol_to_index.insert({ string, noterminal_symbol_to_index.size() });
@@ -492,7 +547,7 @@ namespace PineApple::Ebnf
 						case* T::Rex: {
 							static const std::u32string SpecialChar = UR"($()*+.[]?\^{}|,\)";
 							assert(string.size() >= 2);
-							auto re = symbol_to_index.insert({ string, symbol_to_index.size() });
+							auto re = symbol_to_mask.insert({ string, symbol_to_mask.size() });
 							if (re.second)
 							{
 								std::u32string rex;
@@ -506,7 +561,8 @@ namespace PineApple::Ebnf
 										}
 									rex.push_back(string[i]);
 								}
-								symbol_rex.push_back({ std::move(rex), re.first->second, std::numeric_limits<size_t>::max() });
+								symbol_rex.push_back({ std::move(rex),  re.first->second });
+								state_to_mask.push_back(Lexical::DefaultMask());
 							}
 							return Token{ Symbol(re.first->second, Lr0::TerminalT{}), element };
 						}break;
@@ -516,7 +572,6 @@ namespace PineApple::Ebnf
 								Number = Number * 10 + ite - U'0';
 							return Number;
 						}break;
-						case* T::Mask: assert(false);
 						default:
 							break;
 						}
@@ -528,26 +583,26 @@ namespace PineApple::Ebnf
 						} break;
 						case 1: {
 							LastHead = std::nullopt;
-							auto P1 = std::move(tra.GetData<Token>(3));
+							auto P1 = tra.MoveData<Token>(3);
 							if (!start_symbol)
 								start_symbol = P1.sym;
 							else
-								throw Error::RedefinedStartSymbol{ P1.march.location };
+								throw Error::RedefinedStartSymbol{ P1.march.section };
 							return std::vector<Lr0::ProductionInput>{};
 						}break;
 						case 2: {
-							return std::move(tra.GetRawData(0));
+							return tra.MoveRawData(0);
 						} break;
 						case 3: {
-							auto P1 = std::move(tra.GetData<SymbolList>(0));
-							auto P2 = std::move(tra.GetData<SymbolList>(1));
+							auto P1 = tra.MoveData<SymbolList>(0);
+							auto P2 = tra.MoveData<SymbolList>(1);
 							P1.insert(P1.end(), P2.begin(), P2.end());
 							return std::move(P1);
 						}break;
 						case 5: {
 							auto TemSym = Symbol(noterminal_temporary--, Lr0::NoTerminalT{});
-							auto P1 = std::move(tra.GetData<SymbolList>(0));
-							auto P2 = std::move(tra.GetData<SymbolList>(2));
+							auto P1 = tra.MoveData<SymbolList>(0);
+							auto P2 = tra.MoveData<SymbolList>(2);
 							P1.insert(P1.begin(), TemSym);
 							P2.insert(P2.begin(), TemSym);
 							productions.push_back({ std::move(P1) });
@@ -582,11 +637,11 @@ namespace PineApple::Ebnf
 							return {};
 						}break;
 						case 9: {
-							return std::move(tra.GetRawData(1));
+							return tra.MoveRawData(1);
 						}break;
 						case 10: {
 							auto TemSym = Symbol(noterminal_temporary--, Lr0::NoTerminalT{});
-							auto P = std::move(tra.GetData<SymbolList>(1));
+							auto P = tra.MoveData<SymbolList>(1);
 							P.insert(P.begin(), TemSym);
 							productions.push_back(std::move(P));
 							productions.push_back(Lr0::ProductionInput({ TemSym }));
@@ -594,7 +649,7 @@ namespace PineApple::Ebnf
 						}break;
 						case 11: {
 							auto TemSym = Symbol(noterminal_temporary--, Lr0::NoTerminalT{});
-							auto P = std::move(tra.GetData<SymbolList>(1));
+							auto P = tra.MoveData<SymbolList>(1);
 							auto List = { TemSym, TemSym };
 							P.insert(P.begin(), List.begin(), List.end());
 							productions.push_back(std::move(P));
@@ -607,7 +662,7 @@ namespace PineApple::Ebnf
 							return std::move(SL);
 						} break;
 						case 13: {
-							return std::move(tra.GetRawData(1));
+							return tra.MoveRawData(1);
 						} break;
 						case 14: {
 							return size_t(Lr0::ProductionInput::default_mask());
@@ -635,26 +690,18 @@ namespace PineApple::Ebnf
 			catch (Lr0::Error::UnaccableSymbol const& US)
 			{
 				auto P = Elements[US.index];
-				throw Error::UnacceptableToken{ std::u32string(P.march.capture), P.location };
+				throw Error::UnacceptableToken{ std::u32string(P.capture), P.section };
 			}
 
 		}
 
-
 		std::vector<Lr0::OpePriority> operator_priority;
 		// step3
 		{
-			static Nfa::Table nfa_instance = ([]() -> Nfa::Table {
-				std::vector<T> RequireList = { T::Terminal, T::Rex, T::Command,
-					T::LS_Brace, T::RS_Brace, T::LM_Brace, T::RM_Brace, T::Empty };
-				std::vector<size_t> States;
-				std::vector<std::u32string_view> RexStroage;
-				for (auto& ite : RequireList)
-				{
-					States.push_back(static_cast<size_t>(ite));
-					RexStroage.push_back(Rexs[ite]);
-				}
-				return Nfa::CreateTableFromRex(RexStroage.data(), States.data(), States.data(), RequireList.size());
+			static Lexical::Table nfa_instance = ([]() -> Lexical::Table {
+				PreEbnfInitTuple RequireList[] = { {T::Terminal}, {T::Rex}, {T::Command, true},
+					{T::LS_Brace}, {T::RS_Brace}, {T::LM_Brace}, {T::RM_Brace}, {T::Empty, true} };
+				return CreateLexicalTable(Rexs, RequireList, std::size(RequireList));
 			}());
 
 			static Lr0::Table lr0_instance = Lr0::CreateTable(
@@ -670,7 +717,9 @@ namespace PineApple::Ebnf
 				}, {}
 			);
 
-			auto [Symbols, Elements] = EbnfLexer(nfa_instance, code, { static_cast<size_t>(T::Empty), static_cast<size_t>(T::Command) }, Loc);
+			Section Loc = sperated_code[2].section;
+
+			auto [Symbols, Elements] = EbnfLexer(nfa_instance, sperated_code[2].code, Loc);
 			try {
 				auto History = Lr0::Process(lr0_instance, Symbols.data(), Symbols.size());
 				Lr0::Process(History, [&](Lr0::Element& step) -> std::any {
@@ -679,11 +728,11 @@ namespace PineApple::Ebnf
 						if (step.value == *T::Terminal || step.value == *T::Rex)
 						{
 							auto element = Elements[step.shift.token_index];
-							auto Find = symbol_to_index.find(std::u32string(element.march.capture));
-							if (Find != symbol_to_index.end())
+							auto Find = symbol_to_mask.find(std::u32string(element.capture));
+							if (Find != symbol_to_mask.end())
 								return Token{ Symbol(Find->second, Lr0::TerminalT{}) };
 							else
-								throw Error::UndefinedTerminal{std::u32string(element.march.capture), element.location };
+								throw Error::UndefinedTerminal{std::u32string(element.capture), element.section };
 						}
 					}
 					else {
@@ -695,8 +744,8 @@ namespace PineApple::Ebnf
 							return std::move(List);
 						}break;
 						case 2: {
-							auto P1 = std::move(step.GetData<std::vector<Symbol>>(0));
-							auto P2 = std::move(step.GetData<std::vector<Symbol>>(1));
+							auto P1 = step.MoveData<std::vector<Symbol>>(0);
+							auto P2 = step.MoveData<std::vector<Symbol>>(1);
 							P1.insert(P1.end(), P2.begin(), P2.end());
 							return std::move(P1);
 						} break;
@@ -706,12 +755,12 @@ namespace PineApple::Ebnf
 							return {};
 						} break;
 						case 4: {
-							auto P = step.GetData<std::vector<Symbol>>(2);
+							auto P = step.MoveData<std::vector<Symbol>>(2);
 							operator_priority.push_back({ std::move(P), Lr0::Associativity::Left });
 							return {};
 						} break;
 						case 5: {
-							auto P = step.GetData<std::vector<Symbol>>(2);
+							auto P = step.MoveData<std::vector<Symbol>>(2);
 							operator_priority.push_back({ std::move(P), Lr0::Associativity::Right });
 							return {};
 						} break;
@@ -723,7 +772,7 @@ namespace PineApple::Ebnf
 			catch (Lr0::Error::UnaccableSymbol const& US)
 			{
 				auto P = Elements[US.index];
-				throw Error::UnacceptableToken{ std::u32string(P.march.capture), P.location };
+				throw Error::UnacceptableToken{ std::u32string(P.capture), P.section };
 			}
 		}
 
@@ -734,14 +783,14 @@ namespace PineApple::Ebnf
 		//productions.insert(productions.end(), std::move_iterator(productions_for_temporary.begin()), std::move_iterator(productions_for_temporary.end()));
 		std::u32string table;
 		std::vector<std::tuple<size_t, size_t>> symbol_map;
-		symbol_map.resize(symbol_to_index.size() + noterminal_symbol_to_index.size(), {0, 0});
-		for (auto ite : symbol_to_index)
+		symbol_map.resize(symbol_to_mask.size() + noterminal_symbol_to_index.size(), {0, 0});
+		for (auto ite : symbol_to_mask)
 		{
 			auto start = table.size();
 			table += ite.first;
 			symbol_map[ite.second] = {start, ite.first.size()};
 		}
-		size_t TerminalCount = symbol_to_index.size();
+		size_t TerminalCount = symbol_to_mask.size();
 		for (auto ite : noterminal_symbol_to_index)
 		{
 			auto start = table.size();
@@ -750,25 +799,25 @@ namespace PineApple::Ebnf
 		}
 		
 		try {
-			std::vector<std::u32string_view> Rexs;
-			std::vector<size_t> MappingSize;
-			std::vector<size_t> MappingMask;
-			for (auto ite = symbol_rex.rbegin(); ite != symbol_rex.rend(); ++ite)
+			std::vector<Lexical::LexicalRegexInitTuple> Rexs;
+			Rexs.reserve(symbol_rex.size());
+			for(auto& ite : symbol_rex)
 			{
-				auto& [str, index, mask] = *ite;
-				Rexs.push_back(str);
-				MappingSize.push_back(index);
-				MappingMask.push_back(mask);
+				auto& [str, mask] = ite;
+				Rexs.push_back({std::u32string_view(str), mask});
 			}
-			Nfa::Table NFATable = Nfa::CreateTableFromRex(Rexs.data(), MappingSize.data(), MappingMask.data(), MappingSize.size());
+			Lexical::Table lexical_table = Lexical::CreateLexicalFromRegexsReverse(Rexs.data(), Rexs.size());
 			Lr0::Table Lr0Table = Lr0::CreateTable(
 				*start_symbol, productions, std::move(operator_priority)
 			);
-			return { std::move(table), std::move(symbol_map), TerminalCount, std::move(NFATable), std::move(Lr0Table) };
+			return { std::move(table),
+				std::move(state_to_mask),
+				std::move(lexical_table),
+				std::move(symbol_map), TerminalCount, std::move(Lr0Table) };
 		}
-		catch (Nfa::Error::UnaccaptableRexgex const& ref)
+		catch (Unfa::Error::UnaccaptableRexgex const& ref)
 		{
-			throw Error::UnacceptableRegex{ref.Regex, ref.AccepetableMask};
+			throw Error::UnacceptableRegex{ref.regex, ref.accepetable_mask};
 		}
 		catch (Lr0::Error::NoterminalUndefined const NU)
 		{
@@ -783,6 +832,7 @@ namespace PineApple::Ebnf
 namespace PineApple::StrFormat
 {
 
+	/*
 	struct Wrap { std::u32string const& ref; };
 
 	template<> struct Formatter<Wrap>
@@ -816,4 +866,5 @@ namespace PineApple::StrFormat
 		static auto pat = CreatePatternRef(U"{{{}, {}, {}, {}, {}}}");
 		return Process(pat, Wrap{ ref.symbol_table }, ref.symbol_map, ref.ter_count, ref.nfa_table, ref.lr0_table);
 	}
+	*/
 }

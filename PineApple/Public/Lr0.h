@@ -5,7 +5,8 @@
 #include <set>
 #include <any>
 #include <functional>
-#include "StrFormat.h"
+#include <limits>
+#undef max
 namespace PineApple::Lr0
 {
 	using SymbolStorageT = int32_t;
@@ -56,13 +57,13 @@ namespace PineApple::Lr0
 
 		struct Reduce
 		{
-			size_t ProductionIndex;
+			size_t production_index;
 		};
 
 		struct Shift
 		{
-			SymbolStorageT RequireSymbol;
-			size_t ShiftState;
+			SymbolStorageT require_symbol;
+			size_t shift_state;
 		};
 
 		struct Node
@@ -74,8 +75,8 @@ namespace PineApple::Lr0
 		};
 
 		std::vector<Production> productions;
-		std::vector<Reduce> Reduces;
-		std::vector<Shift> Shifts;
+		std::vector<Reduce> reduces;
+		std::vector<Shift> shifts;
 		std::vector<Node> nodes;
 		std::map<SymbolStorageT, std::set<size_t>> force_reduce;
 	};
@@ -107,8 +108,11 @@ namespace PineApple::Lr0
 		std::tuple<Symbol, std::any>& operator[](size_t index) { return datas[index]; }
 		Symbol& GetSymbol(size_t index) { return std::get<0>((*this)[index]); }
 		template<typename Type>
-		decltype(auto) GetData(size_t index) { return std::any_cast<Type>(std::get<1>((*this)[index])); }
-		decltype(auto) GetRawData(size_t index) { return std::get<1>((*this)[index]); }
+		Type GetData(size_t index) { return std::any_cast<Type>(std::get<1>((*this)[index])); }
+		template<typename Type>
+		std::remove_reference_t<Type> MoveData(size_t index) {return std::move(std::any_cast<std::add_lvalue_reference_t<Type>>(std::get<1>((*this)[index])));}
+		std::any MoveRawData(size_t index) { return std::move(std::get<1>((*this)[index])); }
+		std::any& GetRawData(size_t index) { return std::get<1>((*this)[index]); }
 		Element& operator=(Step const& ref) { Step::operator=(ref); return *this; }
 		Element(Step const& ref) : Step(ref) {}
 	};
@@ -200,16 +204,18 @@ namespace PineApple::Lr0
 		struct UnaccableSymbol {
 			size_t index;
 			Symbol symbol;
-			std::vector<Step> backup_step;
+			History backup_step;
 		};
 	}
 }
 
 namespace PineApple::StrFormat
 {
+	/*
 	template<>
 	struct Formatter<Lr0::Table>
 	{
 		std::u32string operator()(std::u32string_view, Lr0::Table const& tab);
 	};
+	*/
 }

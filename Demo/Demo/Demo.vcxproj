@@ -142,20 +142,26 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\PineApple\Implment\CharEncode.cpp" />
-    <ClCompile Include="..\..\PineApple\Implment\Ebnf.cpp" />
-    <ClCompile Include="..\..\PineApple\Implment\Lr0.cpp" />
-    <ClCompile Include="..\..\PineApple\Implment\Nfa.cpp" />
-    <ClCompile Include="..\..\PineApple\Implment\StrFormat.cpp" />
+    <ClCompile Include="..\..\PineApple\Private\Ebnf.cpp" />
+    <ClCompile Include="..\..\PineApple\Private\Lexical.cpp" />
+    <ClCompile Include="..\..\PineApple\Private\Lr0.cpp" />
+    <ClCompile Include="..\..\PineApple\Private\StrEncode.cpp" />
+    <ClCompile Include="..\..\PineApple\Private\StrFormat.cpp" />
+    <ClCompile Include="..\..\PineApple\Private\StrScanner.cpp" />
+    <ClCompile Include="..\..\PineApple\Private\Symbol.cpp" />
+    <ClCompile Include="..\..\PineApple\Private\Unfa.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\PineApple\Interface\CharEncode.h" />
-    <ClInclude Include="..\..\PineApple\Interface\Ebnf.h" />
-    <ClInclude Include="..\..\PineApple\Interface\Lr0.h" />
-    <ClInclude Include="..\..\PineApple\Interface\Nfa.h" />
-    <ClInclude Include="..\..\PineApple\Interface\Range.h" />
-    <ClInclude Include="..\..\PineApple\Interface\StrFormat.h" />
+    <ClInclude Include="..\..\PineApple\Public\Ebnf.h" />
+    <ClInclude Include="..\..\PineApple\Public\Interval.h" />
+    <ClInclude Include="..\..\PineApple\Public\Lexical.h" />
+    <ClInclude Include="..\..\PineApple\Public\Lr0.h" />
+    <ClInclude Include="..\..\PineApple\Public\StrEncode.h" />
+    <ClInclude Include="..\..\PineApple\Public\StrFormat.h" />
+    <ClInclude Include="..\..\PineApple\Public\StrScanner.h" />
+    <ClInclude Include="..\..\PineApple\Public\Symbol.h" />
+    <ClInclude Include="..\..\PineApple\Public\Unfa.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
