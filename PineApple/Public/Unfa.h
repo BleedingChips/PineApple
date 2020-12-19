@@ -16,8 +16,8 @@ namespace PineApple::Unfa
 	{
 		struct UnaccaptableRexgex {
 			std::u32string regex;
-			size_t accepetable_state;
-			size_t accepetable_mask;
+			uint32_t accepetable_state;
+			uint32_t accepetable_mask;
 			size_t Index;
 		};
 	}
@@ -30,81 +30,98 @@ namespace PineApple::Unfa
 			size_t index;
 		};
 		Sub capture;
-		size_t acception_state;
-		size_t acception_mask;
+		uint32_t acception_state;
+		uint32_t acception_mask;
 		std::vector<Sub> sub_capture;
 	};
 	
 	struct Table
 	{
-		enum class EdgeType : size_t
-		{
-			Acception,
-			Comsume,
-			Epsilon,
-			Capture,
-		};
 
+		struct EAcception{ uint32_t acception_index; uint32_t acception_mask; };
+		struct EEpsilon{};
+		struct ECapture{ uint32_t begin; uint32_t require_index; };
+		struct EComsume { Interval interval; };
+		
 		struct Edge
 		{
-			union 
-			{
-				struct { EdgeType type; size_t jump_state, s1, s2;};
-				struct { EdgeType type; size_t jump_state, acception_state, acception_mask; } acception;
-				struct { EdgeType type; size_t jump_state, character_set_start_index, character_set_count; } comsume;
-				struct { EdgeType type; size_t jump_state; } epsilon;
-				struct { EdgeType type; size_t jump_state, is_begin, require_state; } capture;
-			};
-			Edge(EdgeType input_type, size_t input_jump_state, size_t v1 = 0, size_t v2 = 0) :
-				type(input_type), jump_state(input_jump_state), s1(v1), s2(v2)
-			{
-				acception.acception_state = v1;
-				acception.acception_mask = v2;
-			}
-			Edge(size_t input_type, size_t input_jump_state, size_t v1 = 0, size_t v2 = 0) :
-				Edge(static_cast<EdgeType>(input_type), input_jump_state, v1, v2){}
+			using PropertyT = std::variant<EAcception, EEpsilon, ECapture, EComsume>;
+			uint32_t jump_state;
+			PropertyT property;
 			Edge(Edge const&) = default;
+			Edge(Edge&&) = default;
+			Edge(uint32_t js, PropertyT T) : jump_state(js), property(std::move(T)){}
+			template<typename Type>
+			bool Is() const noexcept {return std::holds_alternative<Type>(property); }
+			template<typename Type>
+			decltype(auto) Get() const noexcept { return std::get<Type>(property); }
+			template<typename Type>
+			decltype(auto) Get() noexcept { return std::get<Type>(property); }
+			Edge& operator=(Edge&&) = default;
 			Edge& operator=(Edge const&) = default;
 		};
-
-		struct Node
-		{
-			size_t edge_start_index;
-			size_t edge_count;
-		};
+		std::vector<std::vector<Edge>> nodes;
 		
-		std::vector<Segment> character_set;
-		std::vector<Edge> edges;
-		std::vector<Node> nodes;
-
-		static Table CreateFromRegex(std::u32string_view rex, size_t state = 0, size_t mask = 0);
+		static Table CreateFromRegex(std::u32string_view rex, uint32_t state = 0, uint32_t mask = 0);
 		size_t NodeCount() const noexcept {return nodes.size(); }
 		size_t StartNodeIndex() const noexcept {return 0;}
-		std::optional<March> Mark(std::u32string_view string, bool greey = true) const;
-		std::tuple<std::set<size_t>, std::vector<Edge>> SearchThroughEpsilonEdge(size_t const* require_state, size_t length) const;
-		std::vector<std::tuple<Interval, std::vector<size_t>>> MergeComsumeEdge(Edge const* edges, size_t edges_length) const;
+		//std::optional<March> Mark(std::u32string_view string, bool greey = true) const;
+		std::tuple<std::set<uint32_t>, std::vector<Edge>> SearchThroughEpsilonEdge(uint32_t const* require_state, size_t length) const;
+		std::vector<std::tuple<Interval, std::vector<uint32_t>>> MergeComsumeEdge(Edge const* edges, size_t edges_length) const;
 		static Table Link(Table const* other_table, size_t table_size);
 		static void DefaultFilter(Table const&, std::vector<Edge>&);
 		Table Simplify(std::function<void(Table const&, std::vector<Edge>&)> edge_filter = Table::DefaultFilter) const;
 		operator bool() const noexcept{return nodes.size() >= 2;}
 	};
 
-	inline Table CreateUnfaTableFromRegex(std::u32string_view rex, size_t state = 0, size_t mask = 0){ return Table::CreateFromRegex(rex, state, mask); }
+	inline Table CreateUnfaTableFromRegex(std::u32string_view rex, uint32_t state = 0, uint32_t mask = 0){ return Table::CreateFromRegex(rex, state, mask); }
 	inline Table LinkUnfaTable(Table const* other_table, size_t table_size) { return Table::Link(other_table, table_size); }
-
-	struct DebuggerTable
+	
+	struct SerilizedTable
 	{
-		DebuggerTable(Table const& table);
-		struct Edge
+
+		enum class SEdgeType : uint32_t
 		{
-			Table::Edge edge;
-			Interval comsume_interval;
+			Acception,
+			Epsilon,
+			Capture,
+			Comsume
 		};
-		struct Node
+
+		struct SEEdgeDescription
 		{
-			std::vector<Edge> edges;
+			SEdgeType type;
+			uint32_t jump_state;
 		};
-		std::vector<Node> nodes;
+
+		struct SENode { uint32_t edge_start_offset; uint32_t edge_count; };
+
+		size_t NodeCount() const noexcept { return node_count; }
+		size_t StartNodeIndex() const noexcept { return 0; }
+		
+		SENode const* Node(size_t node_index) const noexcept{ assert(node_count >= node_index); return reinterpret_cast<SENode const*>(datas.data()) + node_index; }
+		SEEdgeDescription const* EdgeStart(size_t node_index) const noexcept
+		{
+			assert(node_count >= node_index);
+			return reinterpret_cast<SEEdgeDescription const*>(Node(node_index)->edge_start_offset * sizeof(uint32_t) + datas.data());
+		}
+		
+		operator bool() const noexcept { return !datas.empty() && node_count >= 2; }
+
+		SerilizedTable() = default;
+		SerilizedTable(Table const& table);
+		SerilizedTable(SerilizedTable const&) = default;
+		SerilizedTable(SerilizedTable&&) = default;
+		SerilizedTable& operator=(SerilizedTable const&) = default;
+		SerilizedTable& operator=(SerilizedTable&&) = default;
+		std::optional<March> Mark(std::u32string_view string, bool greey = true) const;
+		
+	private:
+		std::vector<std::byte> datas;
+		size_t node_count = 0;
+		
 	};
+
+	inline SerilizedTable Serilized(Table const& table) { return {table};  }
 
 }

@@ -5,21 +5,23 @@ namespace PineApple::Lexical
 
 	void MakeUpUnfaTable(Unfa::Table& table)
 	{
-		for(auto& ite : table.edges)
+		for(auto& ite : table.nodes)
 		{
-			if(ite.type == Unfa::Table::EdgeType::Capture)
-				ite.type = Unfa::Table::EdgeType::Epsilon;
+			for(auto& ite2 : ite)
+			{
+				if(ite2.Is<Unfa::Table::ECapture>())
+					ite2.property = Unfa::Table::EEpsilon{};
+			}
 		}
 	}
 
 	void Table::LexicalFilter(Unfa::Table const& table, std::vector<Unfa::Table::Edge>& edges)
 	{
 		using Edge = Unfa::Table::Edge;
-		using EdgeType = Unfa::Table::EdgeType;
-		std::optional<size_t> acception_jume_state;
+		std::optional<uint32_t> acception_jume_state;
 		edges.erase(std::remove_if(edges.begin(), edges.end(), [&](Edge edge)
 		{
-			if (edge.type == EdgeType::Acception)
+			if (edge.Is<Unfa::Table::EAcception>())
 			{
 				if (!acception_jume_state)
 				{
@@ -27,13 +29,13 @@ namespace PineApple::Lexical
 					return false;
 				}
 				else {
-					acception_jume_state = std::max(*acception_jume_state, edge.acception.jump_state);
+					acception_jume_state = std::max(*acception_jume_state, edge.Get<Unfa::Table::EAcception>().acception_index);
 					return true;
 				}
 			}
 			else if (acception_jume_state)
 			{
-				if (edge.type == EdgeType::Comsume && edge.jump_state < *acception_jume_state)
+				if (edge.jump_state < *acception_jume_state)
 					return true;
 			}
 			return false;
@@ -44,7 +46,7 @@ namespace PineApple::Lexical
 	{
 		std::vector<Unfa::Table> unfas;
 		unfas.reserve(length);
-		for(size_t i = 0; i < length; ++i)
+		for(uint32_t i = 0; i < length; ++i)
 			unfas.push_back(Unfa::CreateUnfaTableFromRegex(adress[i].regex, i, adress[i].mask));
 		auto result = Unfa::LinkUnfaTable(unfas.data(), unfas.size());
 		if(ignore_controller)
@@ -56,7 +58,7 @@ namespace PineApple::Lexical
 	{
 		std::vector<Unfa::Table> unfas;
 		unfas.reserve(length);
-		for (size_t i = length; i> 0; --i)
+		for (uint32_t i = static_cast<uint32_t>(length); i> 0; --i)
 			unfas.push_back(Unfa::CreateUnfaTableFromRegex(adress[i - 1].regex, i - 1, adress[i - 1].mask));
 		auto result = Unfa::LinkUnfaTable(unfas.data(), unfas.size());
 		if(ignore_controller)
@@ -66,26 +68,18 @@ namespace PineApple::Lexical
 
 	SectionPoint CalculateSectionPoint(std::u32string_view str)
 	{
-		static Unfa::Table LineTable = Unfa::CreateUnfaTableFromRegex(U"[^\r\n]*?(?:\r\n|\n)").Simplify();
-		assert(LineTable);
-		SectionPoint point;
-		while (!str.empty())
+		SectionPoint Result;
+		for(auto Ite : str)
 		{
-			auto re2 = LineTable.Mark(str);
-			point.total_index += re2->capture.string.size();
-			if (re2)
+			++Result.total_index;
+			if(Ite == U'\n')
 			{
-				point.line += 1;
-				point.line_index = re2->capture.string.size();
-				str = { str.begin() + re2->capture.string.size(), str.end() };
-			}
-			else
-			{
-				point.line_index += re2->capture.string.size();
-				break;
-			}
+				++Result.line;
+				Result.line_index = 0;
+			}else
+				++Result.line_index;
 		}
-		return point;
+		return Result;
 	}
 
 	std::optional<March> Table::ProcessOnce(std::u32string_view code) const

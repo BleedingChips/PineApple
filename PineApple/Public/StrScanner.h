@@ -23,7 +23,7 @@ namespace PineApple::StrScanner
 
 	struct Pattern
 	{
-		Unfa::Table table;
+		Unfa::SerilizedTable table;
 		template<typename ...TargetType>
 		size_t Process(std::u32string_view code, TargetType&... all_target);
 	private:

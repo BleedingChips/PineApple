@@ -4,8 +4,8 @@
 namespace PineApple::Lexical
 {
 
-	inline constexpr size_t DefaultMask() { return std::numeric_limits<size_t>::max() - 1; }
-	inline constexpr size_t DefaultIgnoreMask() { return std::numeric_limits<size_t>::max(); }
+	inline constexpr uint32_t DefaultMask() { return std::numeric_limits<uint32_t>::max() - 1; }
+	inline constexpr uint32_t DefaultIgnoreMask() { return std::numeric_limits<uint32_t>::max(); }
 	
 	struct SectionPoint
 	{
@@ -40,15 +40,15 @@ namespace PineApple::Lexical
 	struct LexicalRegexInitTuple
 	{
 		LexicalRegexInitTuple(std::u32string_view input_regex = {}) : regex(input_regex), mask(DefaultMask()) {}
-		LexicalRegexInitTuple(std::u32string_view input_regex, size_t input_mask) : regex(input_regex), mask(input_mask){}
+		LexicalRegexInitTuple(std::u32string_view input_regex, uint32_t input_mask) : regex(input_regex), mask(input_mask){}
 		std::u32string_view regex;
-		size_t mask;
+		uint32_t mask;
 	};
 	
 	struct March
 	{
-		size_t acception;
-		size_t mask;
+		uint32_t acception;
+		uint32_t mask;
 		std::u32string_view capture;
 		std::u32string_view last_string;
 		Section section;
@@ -56,7 +56,7 @@ namespace PineApple::Lexical
 
 	struct Table
 	{
-		Unfa::Table table;
+		Unfa::SerilizedTable table;
 		std::optional<March> ProcessOnce(std::u32string_view code) const;
 		std::vector<March> Process(std::u32string_view code, size_t ignore_mask = DefaultIgnoreMask()) const;
 		operator bool() const noexcept{return table;}

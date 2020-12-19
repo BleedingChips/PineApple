@@ -44,7 +44,9 @@ namespace PineApple::StrEncode
 
 	DecodeResult CharWrapper<char8_t>::DecodeOne(Type const* input, size_t input_length)
 	{
-		auto rs = DetectOne(input, input_length);
+		assert(input != nullptr && input_length > 0);
+		auto rs = UTF8RequireSpace(input[0]);
+		assert(input_length >= rs);
 		switch (rs)
 		{
 		case 1: return {1, input[0]};
@@ -68,41 +70,43 @@ namespace PineApple::StrEncode
 
 	size_t CharWrapper<char8_t>::EncodeOne(char32_t temporary, Type* input, size_t input_length)
 	{
-		if(input != nullptr)
+		assert(input != nullptr && input_length > 0);
+		auto rr = EncodeRequest(temporary);
+		assert(input_length >= rr);
+		switch (rr)
 		{
-			auto rr = EncodeRequest(temporary);
-			if(input_length >= rr)
-			{
-				switch (rr)
-				{
-				case 1:
-				{
-					input[0] = static_cast<char8_t>(temporary & 0x0000007F);
-				}break;
-				case 2:
-				{
-					input[0] = 0xC0 | static_cast<char>((temporary & 0x07C0) >> 6);
-					input[1] = 0x80 | static_cast<char>((temporary & 0x3F));
-				}break;
-				case 3:
-				{
-					input[0] = 0xE0 | static_cast<char>((temporary & 0xF000) >> 12);
-					input[1] = 0x80 | static_cast<char>((temporary & 0xFC0) >> 6);
-					input[2] = 0x80 | static_cast<char>((temporary & 0x3F));
-				}break;
-				case 4:
-				{
-					input[0] = 0x1E | static_cast<char>((temporary & 0x1C0000) >> 18);
-					input[1] = 0x80 | static_cast<char>((temporary & 0x3F000) >> 12);
-					input[2] = 0x80 | static_cast<char>((temporary & 0xFC0) >> 6);
-					input[3] = 0x80 | static_cast<char>((temporary & 0x3F));
-				}break;
-				default: break;
-				}
-				return rr;
-			}
+		case 1:
+		{
+			input[0] = static_cast<char8_t>(temporary & 0x0000007F);
+		}break;
+		case 2:
+		{
+			input[0] = 0xC0 | static_cast<char>((temporary & 0x07C0) >> 6);
+			input[1] = 0x80 | static_cast<char>((temporary & 0x3F));
+		}break;
+		case 3:
+		{
+			input[0] = 0xE0 | static_cast<char>((temporary & 0xF000) >> 12);
+			input[1] = 0x80 | static_cast<char>((temporary & 0xFC0) >> 6);
+			input[2] = 0x80 | static_cast<char>((temporary & 0x3F));
+		}break;
+		case 4:
+		{
+			input[0] = 0x1E | static_cast<char>((temporary & 0x1C0000) >> 18);
+			input[1] = 0x80 | static_cast<char>((temporary & 0x3F000) >> 12);
+			input[2] = 0x80 | static_cast<char>((temporary & 0xFC0) >> 6);
+			input[3] = 0x80 | static_cast<char>((temporary & 0x3F));
+		}break;
+		default: break;
 		}
-		return 0;
+		return rr;
+	}
+
+	size_t CheckUTF16RequireSize(char16_t input)
+	{
+		if((input & 0xD800) == 0xD800)
+			return 2;
+		return 1;
 	}
 
 	size_t CharWrapper<char16_t>::DetectOne(Type const* input, size_t input_length)
@@ -124,17 +128,19 @@ namespace PineApple::StrEncode
 
 	DecodeResult CharWrapper<char16_t>::DecodeOne(Type const* input, size_t input_length)
 	{
-		if(input != nullptr && input_length > 0)
+		assert(input != nullptr && input_length > 0);
+		size_t rs  = 0;
+		if ((input[0] & 0xD800) == 0xD800)
+			rs = 2;
+		else
+			rs = 1;
+		assert(input_length >= rs);
+		switch (rs)
 		{
-			auto rs = DetectOne(input, input_length);
-			switch (rs)
-			{
-			case 1: return { 1, input[0] };
-			case 2: return { 2, ((static_cast<char32_t>(input[0] & 0x3FF) << 10) | (static_cast<char32_t>(input[1] & 0x3FF))) + 0x10000 };
-			default: break;
-			}
+		case 1: return { 1, input[0] };
+		case 2: return { 2, ((static_cast<char32_t>(input[0] & 0x3FF) << 10) | (static_cast<char32_t>(input[1] & 0x3FF))) + 0x10000 };
+		default: return { 0, 0 };
 		}
-		return {0, 0};
 	}
 
 	size_t CharWrapper<char16_t>::EncodeRequest(char32_t temporary)
@@ -149,26 +155,25 @@ namespace PineApple::StrEncode
 
 	size_t CharWrapper<char16_t>::EncodeOne(char32_t temporary, Type* input, size_t input_length)
 	{
-		if(input != nullptr)
+		assert(input != nullptr && input_length > 0);
+		size_t rs = 0;
+		if(temporary < 0x1000)
+			rs = 1;
+		else
+			rs = 2;
+		assert(input_length >= rs);
+		switch (rs)
 		{
-			auto rs = EncodeRequest(temporary);
-			if(input_length >= rs)
-			{
-				switch (rs)
-				{
-				case 1: input[0] = static_cast<char16_t>(temporary); return 1;
-				case 2:
-				{
-					char32_t tar = temporary - 0x10000;
-					input[0] = static_cast<char16_t>((tar & 0xFFC00) >> 10) + 0xD800;
-					input[1] = static_cast<char16_t>((tar & 0x3FF)) + 0xDC00;
-					return 2;
-				}
-				default: break;
-				}
-			}
+		case 1: input[0] = static_cast<char16_t>(temporary); return 1;
+		case 2:
+		{
+			char32_t tar = temporary - 0x10000;
+			input[0] = static_cast<char16_t>((tar & 0xFFC00) >> 10) + 0xD800;
+			input[1] = static_cast<char16_t>((tar & 0x3FF)) + 0xDC00;
+			return 2;
 		}
-		return 0;
+		default: return 0;
+		}
 	}
 
 	void Reverser(void* input_element, size_t element_length, size_t element_count)
@@ -185,6 +190,7 @@ namespace PineApple::StrEncode
 
 	size_t CharWrapper<ReverseEndianness<char16_t>>::DetectOne(Type const* input, size_t input_length)
 	{
+		// todo
 		if(input != nullptr && input_length > 0)
 		{
 			char16_t temporary[2];
@@ -198,6 +204,7 @@ namespace PineApple::StrEncode
 
 	DecodeResult CharWrapper<ReverseEndianness<char16_t>>::DecodeOne(Type const* input, size_t input_length)
 	{
+		// todo
 		char16_t temporary[2];
 		auto size = std::min(std::size(temporary), input_length);
 		std::memcpy(temporary, input, size * sizeof(char16_t));
@@ -207,6 +214,7 @@ namespace PineApple::StrEncode
 
 	size_t CharWrapper<ReverseEndianness<char16_t>>::EncodeOne(char32_t temporary, Type* input, size_t input_length)
 	{
+		// todo
 		if(input > nullptr)
 		{
 			char16_t temporary_buffer[2];
@@ -221,6 +229,7 @@ namespace PineApple::StrEncode
 
 	size_t CharWrapper<ReverseEndianness<char32_t>>::DetectOne(Type const* input, size_t input_length)
 	{
+		// todo
 		if (input != nullptr && input_length > 0)
 		{
 			char32_t temporary;
@@ -234,6 +243,7 @@ namespace PineApple::StrEncode
 
 	DecodeResult CharWrapper<ReverseEndianness<char32_t>>::DecodeOne(Type const* input, size_t input_length)
 	{
+		// todo
 		char32_t temporary;
 		auto size = std::min(static_cast<size_t>(1), input_length);
 		std::memcpy(&temporary, input, size * sizeof(char32_t));
@@ -243,6 +253,7 @@ namespace PineApple::StrEncode
 
 	size_t CharWrapper<ReverseEndianness<char32_t>>::EncodeOne(char32_t temporary, Type* input, size_t input_length)
 	{
+		// todo
 		if (input > nullptr)
 		{
 			char32_t temporary_buffer;

@@ -315,7 +315,7 @@ namespace PineApple::Ebnf
 			{T::Command, UR"(/\*.*?\*/|//.*?\n)"},
 		};
 
-		static Unfa::Table sperator = Unfa::CreateUnfaTableFromRegex(UR"((.*?)(?:\r\n|\n)[\f\t\v\r]*?%%%[\s]*?\n|()[\f\t\v\r]*?%%%[\s]*?\n)").Simplify();
+		static Unfa::SerilizedTable sperator = Unfa::CreateUnfaTableFromRegex(UR"((.*?)(?:\r\n|\n)[\f\t\v\r]*?%%%[\s]*?\n|()[\f\t\v\r]*?%%%[\s]*?\n)").Simplify();
 
 		struct SperatedCode
 		{
@@ -351,9 +351,9 @@ namespace PineApple::Ebnf
 				throw Error::UncompleteEbnf{ used };
 		}
 		
-		std::vector<size_t> state_to_mask;
-		std::map<std::u32string, size_t> symbol_to_mask;
-		std::vector<std::tuple<std::u32string, size_t>> symbol_rex;
+		std::vector<uint32_t> state_to_mask;
+		std::map<std::u32string, uint32_t> symbol_to_mask;
+		std::vector<std::tuple<std::u32string, uint32_t>> symbol_rex;
 		//std::vector<Lexical::LexicalRegexInitTuple> symbol_rex;
 
 		// step1
@@ -395,7 +395,7 @@ namespace PineApple::Ebnf
 							return  std::u32string_view(re.data() + 1, re.size() - 2);
 						}break;
 						case* T::Number: {
-							size_t Number = 0;
+							uint32_t Number = 0;
 							for (auto ite : Elements[input.shift.token_index].capture)
 								Number = Number * 10 + ite - U'0';
 							return Number;
@@ -409,8 +409,8 @@ namespace PineApple::Ebnf
 						case 1: {
 							auto Token = input.GetData<std::u32string_view>(1);
 							auto Rex = input.GetData<std::u32string_view>(3);
-							auto re = symbol_to_mask.insert({ std::u32string(Token), static_cast<size_t>(symbol_to_mask.size()) });
-							state_to_mask.push_back(input.GetData<size_t>(4));
+							auto re = symbol_to_mask.insert({ std::u32string(Token), static_cast<uint32_t>(symbol_to_mask.size()) });
+							state_to_mask.push_back(input.GetData<uint32_t>(4));
 							symbol_rex.push_back({ std::u32string(Rex), re.first->second });
 						}break;
 						case 7: {
@@ -419,7 +419,7 @@ namespace PineApple::Ebnf
 							state_to_mask.push_back(Lexical::DefaultMask());
 						} break;
 						case 5: {
-							return input.GetData<size_t>(2);
+							return input.GetData<uint32_t>(2);
 						}break;
 						case 6: {
 							return Lexical::DefaultMask();
@@ -547,7 +547,7 @@ namespace PineApple::Ebnf
 						case* T::Rex: {
 							static const std::u32string SpecialChar = UR"($()*+.[]?\^{}|,\)";
 							assert(string.size() >= 2);
-							auto re = symbol_to_mask.insert({ string, symbol_to_mask.size() });
+							auto re = symbol_to_mask.insert({ string, static_cast<uint32_t>(symbol_to_mask.size()) });
 							if (re.second)
 							{
 								std::u32string rex;

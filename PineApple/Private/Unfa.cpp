@@ -3,6 +3,7 @@
 #include <optional>
 #include <variant>
 #include <string_view>
+#include <deque>
 
 namespace PineApple::Unfa
 {
@@ -215,16 +216,15 @@ namespace PineApple::Unfa
 
 	}
 
-	Table Table::CreateFromRegex(std::u32string_view rex, size_t acception_state, size_t acception_mask)
+	Table Table::CreateFromRegex(std::u32string_view rex, uint32_t acception_index, uint32_t acception_mask)
 	{
 		try
 		{
 			struct TemNode
 			{
-				size_t in;
-				size_t out;
+				uint32_t in;
+				uint32_t out;
 			};
-			std::vector<Segment> temporary_interval;
 			std::vector<std::vector<Edge>> temporary_node;
 			temporary_node.emplace_back();
 			auto [symbols, comsumes] = RexLexer(rex);
@@ -243,19 +243,19 @@ namespace PineApple::Unfa
 					{
 						auto Node1 = tra.GetData<TemNode>(0);
 						auto Node2 = tra.GetData<TemNode>(1);
-						temporary_node[Node1.out].push_back(Edge{EdgeType::Epsilon, Node2.in});
+						temporary_node[Node1.out].emplace_back(Edge{Node2.in,  EEpsilon{}});
 						return TemNode{Node1.in, Node2.out};
 					}
 					case 2:
 					{
 						auto Node1 = tra.GetData<TemNode>(0);
 						auto Node2 = tra.GetData<TemNode>(2);
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({Edge{EdgeType::Epsilon, Node1.in}, Edge{EdgeType::Epsilon, Node2.in}});
-						temporary_node.push_back({});
-						temporary_node[Node1.out].push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
-						temporary_node[Node2.out].push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
+						temporary_node.push_back({Edge{Node1.in, EEpsilon{}}, Edge{Node2.in, EEpsilon{}}});
+						temporary_node.emplace_back();
+						temporary_node[Node1.out].emplace_back(Edge{ NewNodeOut, EEpsilon{}});
+						temporary_node[Node2.out].emplace_back(Edge{ NewNodeOut, EEpsilon{}});
 						return TemNode{NewNodeIn, NewNodeOut};
 					}
 					case 3:
@@ -265,31 +265,31 @@ namespace PineApple::Unfa
 					case 4:
 					{
 						auto Node1 = tra.GetData<TemNode>(1);
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({ Edge{EdgeType::Capture, Node1.in, 1, acception_state}});
-						temporary_node.push_back({});
-						temporary_node[Node1.out].push_back(Edge{ EdgeType::Capture, NewNodeOut, 0, acception_state });
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
+						temporary_node.push_back({Edge{Node1.in, ECapture{true, acception_index }}});
+						temporary_node.emplace_back();
+						temporary_node[Node1.out].emplace_back(Edge{NewNodeOut, ECapture{0, acception_index }});
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 19:
 					{
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({ Edge{EdgeType::Epsilon, NewNodeOut, 0, 0} });
-						temporary_node.push_back({});
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
+						temporary_node.push_back({Edge{NewNodeOut, EEpsilon{}}});
+						temporary_node.emplace_back();
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 20:
 					{
-						size_t NewNode1 = temporary_node.size();
-						size_t NewNode2 = NewNode1 + 1;
-						size_t NewNode3 = NewNode2 + 1;
-						size_t NewNode4 = NewNode3 + 1;
-						temporary_node.push_back({ Edge{EdgeType::Capture, NewNode2, 1, acception_state} });
-						temporary_node.push_back({ Edge{EdgeType::Epsilon, NewNode3, 0, 0} });
-						temporary_node.push_back({ Edge{EdgeType::Capture, NewNode4, 0, acception_state} });
-						temporary_node.push_back({});
+						uint32_t NewNode1 = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNode2 = NewNode1 + 1;
+						uint32_t NewNode3 = NewNode2 + 1;
+						uint32_t NewNode4 = NewNode3 + 1;
+						temporary_node.push_back({Edge{NewNode2, ECapture{true, acception_index}}});
+						temporary_node.push_back({Edge{NewNode3, EEpsilon{}}});
+						temporary_node.push_back({Edge{NewNode4, ECapture{false, acception_index}}});
+						temporary_node.emplace_back();
 						return TemNode{ NewNode1, NewNode4 };
 					}
 					case 5: {return Interval{}; }
@@ -310,123 +310,115 @@ namespace PineApple::Unfa
 					}
 					case 8:
 					{
-						size_t cur_index = temporary_interval.size();
-						auto& r1 = tra.GetData<Interval&>(1);
-						temporary_interval.insert(temporary_interval.end(), r1.begin(), r1.end());
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({Edge{EdgeType::Comsume, NewNodeOut, cur_index, r1.size()}});
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
+						temporary_node.push_back({ Edge{ NewNodeOut, ECapture{tra.MoveData<Interval>(1)} } });
 						temporary_node.emplace_back();
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 9:
 					{
-						size_t cur_index = temporary_interval.size();
-						auto& r1 = tra.GetData<Interval&>(2);
+						Interval r1 = tra.MoveData<Interval>(2);
 						Interval total(Segment{1, std::numeric_limits<char32_t>().max()});
 						r1 = total - r1;
-						temporary_interval.insert(temporary_interval.end(), r1.begin(), r1.end());
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({Edge{ EdgeType::Comsume, NewNodeOut, cur_index, r1.size() }});
-						temporary_node.push_back({});
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
+						temporary_node.push_back({ Edge{ NewNodeOut, EComsume{std::move(r1)} } });
+						temporary_node.emplace_back();
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 12:
 					{
-						size_t cur_index = temporary_interval.size();
-						auto& r1 = tra.GetData<Interval&>(0);
-						temporary_interval.insert(temporary_interval.end(), r1.begin(), r1.end());
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({Edge{ EdgeType::Comsume, NewNodeOut, cur_index, r1.size() }});
-						temporary_node.push_back({});
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
+						temporary_node.push_back({ Edge{ NewNodeOut, EComsume{std::move(tra.MoveData<Interval>(0))}} });
+						temporary_node.emplace_back();
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 13:
 					{
 						auto Node = tra.GetData<TemNode>(0);
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
 						temporary_node.emplace_back();
 						temporary_node.emplace_back();
 						auto& ref = temporary_node[Node.out];
 						auto& ref2 = temporary_node[NewNodeIn];
-						ref.push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
-						ref.push_back(Edge{ EdgeType::Epsilon, Node.in });
-						ref2.push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
-						ref2.push_back(Edge{ EdgeType::Epsilon, Node.in });
+						ref.emplace_back(Edge{ NewNodeOut, EEpsilon{} });
+						ref.emplace_back(Edge{ Node.in, EEpsilon{} });
+						ref2.emplace_back(Edge{ NewNodeOut, EEpsilon{} });
+						ref2.emplace_back(Edge{ Node.in, EEpsilon{} });
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 14:
 					{
 						auto Node = tra.GetData<TemNode>(0);
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({});
-						temporary_node.push_back({});
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
+						temporary_node.emplace_back();
+						temporary_node.emplace_back();
 						auto& ref = temporary_node[Node.out];
 						auto& ref2 = temporary_node[NewNodeIn];
-						ref.push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
-						ref.push_back(Edge{ EdgeType::Epsilon, Node.in });
-						ref2.push_back(Edge{ EdgeType::Epsilon, Node.in });
+						ref.emplace_back(Edge{ NewNodeOut, EEpsilon{} });
+						ref.emplace_back(Edge{ Node.in, EEpsilon{} });
+						ref2.emplace_back(Edge{ Node.in, EEpsilon{} });
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 15:
 					{
 						auto Node = tra.GetData<TemNode>(0);
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({});
-						temporary_node.push_back({});
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
+						temporary_node.emplace_back();
+						temporary_node.emplace_back();
 						auto& ref = temporary_node[Node.out];
 						auto& ref2 = temporary_node[NewNodeIn];
-						ref.push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
-						ref2.push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
-						ref2.push_back(Edge{ EdgeType::Epsilon, Node.in });
+						ref.emplace_back(Edge{ NewNodeOut, EEpsilon{} });
+						ref2.emplace_back(Edge{ NewNodeOut, EEpsilon{} });
+						ref2.emplace_back(Edge{ Node.in, EEpsilon{} });
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 16:
 					{
 						auto Node = tra.GetData<TemNode>(0);
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
 						temporary_node.emplace_back();
 						temporary_node.emplace_back();
 						auto& ref = temporary_node[Node.out];
 						auto& ref2 = temporary_node[NewNodeIn];
-						ref.push_back(Edge{ EdgeType::Epsilon, Node.in });
-						ref.push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
-						ref2.push_back(Edge{ EdgeType::Epsilon, Node.in });
-						ref2.push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
+						ref.emplace_back(Edge{ Node.in, EEpsilon{} });
+						ref.emplace_back(Edge{ NewNodeOut, EEpsilon{} });
+						ref2.emplace_back(Edge{ Node.in, EEpsilon{} });
+						ref2.emplace_back(Edge{ NewNodeOut, EEpsilon{} });
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 17:
 					{
 						auto Node = tra.GetData<TemNode>(0);
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({});
-						temporary_node.push_back({});
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
+						temporary_node.emplace_back();
+						temporary_node.emplace_back();
 						auto& ref = temporary_node[Node.out];
 						auto& ref2 = temporary_node[NewNodeIn];
-						ref.push_back(Edge{ EdgeType::Epsilon, Node.in });
-						ref.push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
-						ref2.push_back(Edge{ EdgeType::Epsilon, Node.in });
+						ref.emplace_back(Edge{ Node.in, EEpsilon{} });
+						ref.emplace_back(Edge{ NewNodeOut, EEpsilon{} });
+						ref2.emplace_back(Edge{ Node.in, EEpsilon{} });
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 18:
 					{
 						auto Node = tra.GetData<TemNode>(0);
-						size_t NewNodeIn = temporary_node.size();
-						size_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({});
-						temporary_node.push_back({});
+						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
+						uint32_t NewNodeOut = NewNodeIn + 1;
+						temporary_node.emplace_back();
+						temporary_node.emplace_back();
 						auto& ref = temporary_node[Node.out];
 						auto& ref2 = temporary_node[NewNodeIn];
-						ref.push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
-						ref2.push_back(Edge{ EdgeType::Epsilon, Node.in });
-						ref2.push_back(Edge{ EdgeType::Epsilon, NewNodeOut });
+						ref.emplace_back(Edge{ NewNodeOut, EEpsilon{} });
+						ref2.emplace_back(Edge{ Node.in, EEpsilon{} });
+						ref2.emplace_back(Edge{  NewNodeOut, EEpsilon{} });
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					default: assert(false); return {};
@@ -435,34 +427,19 @@ namespace PineApple::Unfa
 				return {};
 			});
 			auto result_node = std::any_cast<TemNode>(result);
-			temporary_node[0].push_back({EdgeType::Epsilon, result_node.in});
-			auto last_index = temporary_node.size();
+			temporary_node[0].emplace_back(Edge{result_node.in, EEpsilon{}});
+			auto last_index = static_cast<uint32_t>(temporary_node.size());
 			temporary_node.emplace_back();
-			temporary_node[result_node.out].emplace_back(Edge{EdgeType::Acception, last_index, acception_state, acception_mask });
-			Table table;
-			table.character_set = std::move(temporary_interval);
-			size_t require_nodes_count = 0;
-			for(auto& ite : temporary_node)
-				require_nodes_count += ite.size();
-			table.edges.reserve(require_nodes_count);
-			table.nodes.reserve(temporary_node.size());
-			for(auto& ite : temporary_node)
-			{
-				size_t start = table.edges.size();
-				table.edges.insert(table.edges.end(), ite.begin(), ite.end());
-				table.nodes.emplace_back(start, ite.size());
-			}
-			return std::move(table);
-		}catch(Error::UnaccaptableRexgex const& US)
-		{
-			throw Error::UnaccaptableRexgex{ std::u32string(rex), acception_state, acception_mask, rex.size() - 1};
+			temporary_node[result_node.out].emplace_back(Edge{ last_index, EAcception{acception_index, acception_mask} });
+			return {std::move(temporary_node)};
 		}
 		catch(Lr0::Error::UnaccableSymbol const& Symbol)
 		{
-			throw Error::UnaccaptableRexgex{std::u32string(rex), acception_state, acception_mask, Symbol.index};
+			throw Error::UnaccaptableRexgex{std::u32string(rex), acception_index, acception_mask, Symbol.index};
 		}
 	}
 
+	/*
 	std::optional<March> Table::Mark(std::u32string_view string, bool greey) const
 	{
 		assert(*this);
@@ -479,8 +456,8 @@ namespace PineApple::Unfa
 			std::u32string_view last_string;
 			size_t capture_count;
 		};
-		std::vector<CaptureTuple> capture_stack;
-		std::vector<SearchStack> search_stack;
+		std::deque<CaptureTuple> capture_stack;
+		std::deque<SearchStack> search_stack;
 		search_stack.push_back({ 0,0, string });
 		std::optional<March> Acception;
 		while (!search_stack.empty())
@@ -577,53 +554,56 @@ namespace PineApple::Unfa
 		}
 		return Acception;
 	}
+	*/
 
-	std::tuple<std::set<size_t>, std::vector<Table::Edge>> Table::SearchThroughEpsilonEdge(size_t const* require_state, size_t length) const
+	std::tuple<std::set<uint32_t>, std::vector<Table::Edge>> Table::SearchThroughEpsilonEdge(uint32_t const* require_state, size_t length) const
 	{
 		std::vector<Edge> all_edge;
 		struct SearchTuple
 		{
-			size_t node;
-			size_t edge;
+			uint32_t node;
+			uint32_t edge;
 		};
-		std::set<size_t> Finded;
+		std::set<uint32_t> finded;
 		std::vector<SearchTuple> search_stack;
-		
-		for(size_t i = length; i > 0; --i)
-			search_stack.push_back({ require_state[i-1], 0});
-		while(!search_stack.empty())
+
+		for (uint32_t i = static_cast<uint32_t>(length); i > 0; --i)
+			search_stack.push_back({ require_state[i - 1], 0 });
+		while (!search_stack.empty())
 		{
 			auto& ref = *search_stack.rbegin();
 			assert(ref.node < nodes.size());
-			auto node = nodes[ref.node];
-			if(ref.edge >= node.edge_count)
+			auto& node = nodes[ref.node];
+			if (ref.edge >= node.size())
 			{
-				Finded.insert(ref.node);
+				finded.insert(ref.node);
 				search_stack.pop_back();
-			}else while(ref.edge < node.edge_count)
+			}
+			else while (ref.edge < node.size())
 			{
-				auto edge = edges[node.edge_start_index + (ref.edge++)];
-				if(edge.type == EdgeType::Epsilon)
+				auto edge = node[(ref.edge++)];
+				if (edge.Is<EEpsilon>())
 				{
-					if(Finded.find(edge.jump_state) == Finded.end())
+					if (finded.find(edge.jump_state) == finded.end())
 						search_stack.push_back({ edge.jump_state, 0 });
 					break;
-				}else
+				}
+				else
 					all_edge.push_back(edge);
 			}
 		}
-		return { std::move(Finded), std::move(all_edge)};
+		return { std::move(finded), std::move(all_edge) };
 	}
 
-	std::vector<std::tuple<Interval, std::vector<size_t>>> Table::MergeComsumeEdge(Edge const* tar_edges, size_t edges_length) const
+	std::vector<std::tuple<Interval, std::vector<uint32_t>>> Table::MergeComsumeEdge(Edge const* tar_edges, size_t edges_length) const
 	{
-		std::vector<std::tuple<Interval, std::vector<size_t>>> output_edge;
+		std::vector<std::tuple<Interval, std::vector<uint32_t>>> output_edge;
 		for(size_t i = 0; i < edges_length; ++i)
 		{
-			auto cur_edge = tar_edges[i].comsume;
-			assert(cur_edge.type == EdgeType::Comsume);
-			std::vector<std::tuple<Interval, std::vector<size_t>>> temporary = std::move(output_edge);
-			Interval cur(character_set.data() + cur_edge.character_set_start_index, cur_edge.character_set_count, NoDetectT{});
+			auto& cur_edge = tar_edges[i];
+			assert(cur_edge.Is<EComsume>());
+			std::vector<std::tuple<Interval, std::vector<uint32_t>>> temporary = std::move(output_edge);
+			Interval cur(cur_edge.Get<EComsume>().interval);
 			for(auto& ite : temporary)
 			{
 				if(!cur)
@@ -649,62 +629,35 @@ namespace PineApple::Unfa
 
 	Table Table::Link(Table const* other_table, size_t table_size)
 	{
-		size_t character_set_size = 0;
-		size_t edges_size = 0;
-		size_t nodes_size = 0;
-		size_t total_append_table = 0;
+		size_t edge_count = 1;
 		for(size_t i = 0; i < table_size; ++i)
 		{
-			auto& ref = other_table[i];
-			if(ref)
-			{
-				character_set_size += ref.character_set.size();
-				edges_size += ref.edges.size();
-				nodes_size += ref.nodes.size();
-				total_append_table += 1;
-			}
+			if(other_table[i])
+				edge_count += other_table[i].nodes.size();
 		}
-		
-		if(total_append_table > 0)
+		if(edge_count > 3)
 		{
-			Table new_table;
-			new_table.character_set.reserve(character_set_size);
-			new_table.edges.reserve(total_append_table + edges_size);
-			new_table.edges.resize(total_append_table, Edge{EdgeType::Epsilon, 0, 0, 0});
-			new_table.nodes.reserve(nodes_size + 1);
-			new_table.nodes.push_back({ 0, total_append_table });
-
+			std::vector<std::vector<Edge>> new_node;
+			new_node.reserve(edge_count);
+			new_node.emplace_back();
+			for (size_t i = 0; i < table_size; ++i)
 			{
-				size_t nodes_added = 0;
-				for (size_t i = 0; i < table_size; ++i)
+				auto& ref = other_table[i];
+				if (ref)
 				{
-					auto& ref = other_table[i];
-					if (ref)
+					uint32_t cur_node = static_cast<uint32_t>(new_node.size());
+					new_node.insert(new_node.end(), ref.nodes.begin(), ref.nodes.end());
+					for (size_t k = cur_node; k < new_node.size(); ++k)
 					{
-						size_t current_nodes = new_table.nodes.size();
-						size_t current_edges = new_table.edges.size();
-						size_t current_character_set = new_table.character_set.size();
-						new_table.nodes.insert(new_table.nodes.end(), ref.nodes.begin(), ref.nodes.end());
-						new_table.edges.insert(new_table.edges.end(), ref.edges.begin(), ref.edges.end());
-						new_table.character_set.insert(new_table.character_set.end(), ref.character_set.begin(), ref.character_set.end());
-						for(size_t i = current_nodes; i < new_table.nodes.size(); ++i)
-							new_table.nodes[i].edge_start_index += current_edges;
-						for (size_t i = current_edges; i < new_table.edges.size(); ++i)
-						{
-							auto& edge = new_table.edges[i];
-							edge.jump_state += current_nodes;
-							if(edge.type == EdgeType::Comsume)
-								edge.comsume.character_set_start_index += current_character_set;
-						}
-						new_table.edges[nodes_added++].jump_state = current_nodes;
+						for (auto& ite : new_node[k])
+							ite.jump_state += cur_node;
 					}
+					new_node[0].emplace_back(Edge{ cur_node, EEpsilon{} });
 				}
 			}
-			return std::move(new_table);
-		}else
-		{
-			return {};
+			return {std::move(new_node)};
 		}
+		return {};
 	}
 
 	void Table::DefaultFilter(Table const&, std::vector<Edge>& edges)
@@ -712,11 +665,14 @@ namespace PineApple::Unfa
 		bool finded_acception = false;
 		edges.erase(std::remove_if(edges.begin(), edges.end(), [&](Edge edge)
 		{
-			if (edge.type == EdgeType::Acception)
+			if (edge.Is<EAcception>())
 			{
-				auto old_finded_acception = finded_acception;
-				finded_acception = true;
-				return old_finded_acception;
+				if(!finded_acception)
+				{
+					finded_acception = true;
+					return false;
+				}else
+					return true;
 			}
 			return false;
 		}), edges.end());
@@ -731,15 +687,14 @@ namespace PineApple::Unfa
 			std::vector<Edge> Edges;
 		};
 
-		std::map<std::set<size_t>, size_t> redefine_state;
-		std::vector<std::tuple<size_t, std::vector<Edge>>> search;
+		std::map<std::set<uint32_t>, uint32_t> redefine_state;
+		std::deque<std::tuple<uint32_t, std::vector<Edge>>> search;
 		std::vector<Segment> segment_set;
-		std::vector<Segment> temporary_segment_list;
 		std::vector<std::vector<Edge>> temporary_node;
 
-		auto InsertNewStateFuncion = [&](std::set<size_t> set, std::vector<Edge> edges) -> size_t
+		auto InsertNewStateFuncion = [&](std::set<uint32_t> set, std::vector<Edge> edges) -> uint32_t
 		{
-			auto re = redefine_state.insert({std::move(set), redefine_state.size()});
+			auto re = redefine_state.insert({std::move(set), static_cast<uint32_t>(redefine_state.size())});
 			if(re.second)
 			{
 				temporary_node.emplace_back();
@@ -749,7 +704,7 @@ namespace PineApple::Unfa
 		};
 		
 		{
-			size_t start_index = 0;
+			uint32_t start_index = 0;
 			auto [sets, edges] = SearchThroughEpsilonEdge(&start_index, 1);
 			InsertNewStateFuncion(std::move(sets), std::move(edges));
 		}
@@ -761,11 +716,11 @@ namespace PineApple::Unfa
 			if(edge_filter)
 				edge_filter(*this, edges);
 			auto ite = edges.begin();
-			std::optional<size_t> AcceptionState;
+			std::optional<uint32_t> AcceptionState;
 			while(ite != edges.end())
 			{
 				auto cur = ite;
-				while(cur != edges.end() && cur->type == EdgeType::Comsume)
+				while(cur != edges.end() && cur->Is<EComsume>())
 					++cur;
 				if(cur != ite)
 				{
@@ -775,52 +730,235 @@ namespace PineApple::Unfa
 						auto& [inv, temporary_list] = ite2;
 						//std::vector<size_t> temporary_list(old_state_set.begin(), old_state_set.end());
 						auto [search_state, search_edge] = SearchThroughEpsilonEdge(temporary_list.data(), temporary_list.size());
-						size_t state = InsertNewStateFuncion(std::move(search_state), std::move(search_edge));
-						size_t cur_list = temporary_segment_list.size();
-						temporary_segment_list.insert(temporary_segment_list.end(), inv.begin(), inv.end());
-						temporary_node[state_set].push_back({EdgeType::Comsume, state, cur_list, inv.size()});
+						uint32_t state = InsertNewStateFuncion(std::move(search_state), std::move(search_edge));
+						temporary_node[state_set].emplace_back(Edge{state, EComsume{std::move(inv)}});
 						// todo list
 					}
 				}
 				if(cur != edges.end())
 				{
-					auto [search_state, search_edge] = SearchThroughEpsilonEdge(&cur->jump_state, 1);
-					size_t state = InsertNewStateFuncion(std::move(search_state), std::move(search_edge));
-					temporary_node[state_set].push_back({cur->type, state, cur->s1, cur->s2});
+					auto [search_state, search_edge] = SearchThroughEpsilonEdge(&(cur->jump_state), 1);
+					uint32_t state = InsertNewStateFuncion(std::move(search_state), std::move(search_edge));
+					temporary_node[state_set].emplace_back(Edge{state, cur->property});
 					++cur;
 				}
 				ite = cur;
 			}
 		}
-
-		Table table;
-		table.character_set = std::move(temporary_segment_list);
-		table.nodes.reserve(temporary_node.size());
-		for(auto& ite : temporary_node)
-		{
-			size_t cur = table.edges.size();
-			table.edges.insert(table.edges.end(), ite.begin(), ite.end());
-			table.nodes.push_back({cur, ite.size()});
-		}
-		return std::move(table);
+		return { std::move(temporary_node) };
 	}
+	
+	struct SEAcception{ uint32_t acception_index; uint32_t acception_mask; };
+	struct SECapture { uint32_t begin; uint32_t require_index; };
+	struct SEComsume { uint32_t count; };
 
-	DebuggerTable::DebuggerTable(Table const& table)
+	struct SENode{ uint32_t edge_start_offset; uint32_t edge_count; };
+
+	SerilizedTable::SerilizedTable(Table const& table)
 	{
-		nodes.resize(table.nodes.size());
-		for(size_t i = 0; i < table.nodes.size(); ++i)
+		if(table)
 		{
-			auto& self = nodes[i];
-			auto& input = table.nodes[i];
-			self.edges.reserve(input.edge_count);
-			auto edge_start = table.edges.data() + input.edge_start_index;
-			for(size_t i =0; i < input.edge_count; ++i)
+			size_t total_space = 0;
+
+			total_space += table.nodes.size() * sizeof(SENode);
+			for (auto& ite : table.nodes)
 			{
-				if(edge_start[i].type == Table::EdgeType::Comsume)
-					self.edges.push_back({ edge_start[i], IntervalWrapper{table.character_set.data() + edge_start[i].comsume.character_set_start_index, edge_start[i].comsume.character_set_count}});
-				else
-					self.edges.push_back({ edge_start[i], {}});
+				for (auto& ite2 : ite)
+				{
+					total_space += sizeof(SEEdgeDescription);
+					if (ite2.Is<Table::EAcception>())
+						total_space += sizeof(SEAcception);
+					else if (ite2.Is<Table::ECapture>())
+						total_space += sizeof(SECapture);
+					else if (ite2.Is<Table::EComsume>())
+					{
+						total_space += sizeof(SEComsume);
+						auto& ref = ite2.Get<Table::EComsume>();
+						total_space += ref.interval.size() * sizeof(Segment);
+					}
+				}
+			}
+
+			node_count = table.nodes.size();
+			datas.resize(total_space);
+			SENode *node_adress = reinterpret_cast<SENode*>(datas.data());
+			std::byte *edges_adress = reinterpret_cast<std::byte*>(node_adress + node_count);
+			for(auto& ite : table.nodes)
+			{
+				*(node_adress++) = {
+					static_cast<uint32_t>((reinterpret_cast<size_t>(edges_adress) - reinterpret_cast<size_t>(datas.data())) / sizeof(uint32_t)),
+					static_cast<uint32_t>(ite.size())
+				};
+				for(auto& ite2 : ite)
+				{
+					auto& edge_desc = *reinterpret_cast<SEEdgeDescription*>(edges_adress);
+					edges_adress += sizeof(SEEdgeDescription);
+					edge_desc.jump_state = ite2.jump_state;
+					if(ite2.Is<Table::EAcception>())
+					{
+						edge_desc.type = SEdgeType::Acception;
+						auto& acception = *reinterpret_cast<SEAcception*>(edges_adress);
+						edges_adress += sizeof(SEAcception);
+						auto& ref = ite2.Get<Table::EAcception>();
+						acception.acception_index = ref.acception_index;
+						acception.acception_mask = ref.acception_mask;
+					}else if(ite2.Is<Table::ECapture>())
+					{
+						edge_desc.type = SEdgeType::Capture;
+						auto& capture = *reinterpret_cast<SECapture*>(edges_adress);
+						edges_adress += sizeof(SECapture);
+						auto& ref = ite2.Get<Table::ECapture>();
+						capture.begin = (ref.begin ? 1 : 0);
+						capture.require_index = ref.require_index;
+					}else if(ite2.Is<Table::EComsume>())
+					{
+						edge_desc.type = SEdgeType::Comsume;
+						auto& comsume = *reinterpret_cast<SEComsume*>(edges_adress);
+						edges_adress += sizeof(SEComsume);
+						auto& ref = ite2.Get<Table::EComsume>();
+						comsume.count = static_cast<uint32_t>(ref.interval.size());
+						std::memcpy(edges_adress, ref.interval.AsWrapper().begin(), sizeof(Segment) * comsume.count);
+						edges_adress += sizeof(Segment) * comsume.count;
+					}
+				}
 			}
 		}
+	}
+
+	std::optional<March> SerilizedTable::Mark(std::u32string_view string, bool greey) const
+	{
+		assert(*this);
+		struct CaptureTuple
+		{
+			bool is_begin;
+			size_t capture_index;
+			size_t require_state;
+		};
+		struct SearchStack
+		{
+			size_t node;
+			SEEdgeDescription const* current_edge;
+			size_t current_edge_index;
+			size_t edge_count;
+			std::u32string_view last_string;
+			size_t capture_count;
+		};
+		struct NextSearch
+		{
+			size_t node;
+			std::u32string_view last;
+		};
+		std::deque<CaptureTuple> capture_stack;
+		std::deque<SearchStack> search_stack;
+		search_stack.push_back({0, EdgeStart(0), 0, Node(0)->edge_count, string, 0});
+		std::optional<March> last_acception;
+		while (!search_stack.empty())
+		{
+			const SearchStack stack = *search_stack.rbegin();
+			search_stack.pop_back();
+			capture_stack.resize(stack.capture_count);
+			SEEdgeDescription const* next_edge = nullptr;
+			std::optional<NextSearch> next_search;
+			switch (stack.current_edge->type)
+			{
+			case SEdgeType::Comsume:
+			{
+				SEComsume const* comsume = reinterpret_cast<SEComsume const*>(stack.current_edge + 1);
+				size_t seg_count = comsume->count;
+				Segment const* seg = reinterpret_cast<Segment const*>(comsume + 1);
+				next_edge = reinterpret_cast<SEEdgeDescription const*>(seg + seg_count);
+				if (!stack.last_string.empty())
+				{
+					IntervalWrapper wrapper(seg, seg_count);
+					auto cur_character = *stack.last_string.begin();
+					if (wrapper.IsInclude(cur_character))
+						next_search = NextSearch{ stack.current_edge->jump_state, {stack.last_string.data() + 1, stack.last_string.size() - 1} };
+				}
+			}break;
+			case SEdgeType::Acception: {
+				SEAcception const* acception = reinterpret_cast<SEAcception const*>(stack.current_edge + 1);
+				search_stack.clear();
+				std::u32string_view capture_str(string.data(), string.size() - stack.last_string.size());
+				if (greey)
+				{
+					next_edge = reinterpret_cast<SEEdgeDescription const*>(acception + 1);
+					if (!last_acception || last_acception->capture.string.size() < capture_str.size())
+					{
+						last_acception = March{
+							{capture_str, 0},
+							acception->acception_index,
+							acception->acception_mask,
+							{}
+						};
+					}
+					next_search = NextSearch{ stack.current_edge->jump_state, stack.last_string };
+				}
+				else
+				{
+					last_acception = March{
+							{capture_str, 0},
+							acception->acception_index,
+							acception->acception_mask,
+							{}
+					};
+				}
+			} break;
+			case SEdgeType::Capture:
+			{
+				SECapture const* capture = reinterpret_cast<SECapture const*>(stack.current_edge + 1);
+				next_edge = reinterpret_cast<SEEdgeDescription const*>(capture + 1);
+				capture_stack.push_back({ capture->begin == 1, string.size() - stack.last_string.size(), capture->require_index });
+				next_search = NextSearch{ stack.current_edge->jump_state, stack.last_string };
+			}
+			case SEdgeType::Epsilon:
+			{
+				next_edge = stack.current_edge + 1;
+				next_search = NextSearch{ stack.current_edge->jump_state, stack.last_string };
+			}break;
+			default: {assert(false); } break;
+			}
+			if(next_edge != nullptr)
+			{
+				auto old_stack = stack;
+				++old_stack.current_edge_index;
+				if(old_stack.current_edge_index < old_stack.edge_count)
+				{
+					old_stack.current_edge = next_edge;
+					search_stack.push_back(old_stack);
+				}
+			}
+			if(next_search)
+			{
+				SearchStack stack{
+					next_search->node,
+					EdgeStart(next_search->node),
+					0, Node(next_search->node)->edge_count,
+					next_search->last,
+					capture_stack.size()
+				};
+				if(stack.current_edge_index < stack.edge_count)
+					search_stack.push_back(stack);
+			}
+		}
+		if (last_acception)
+		{
+			std::vector<CaptureTuple> handle_stack;
+			for (auto& ite : capture_stack)
+			{
+				if (ite.require_state == last_acception->acception_state)
+				{
+					if (!ite.is_begin)
+					{
+						assert(!handle_stack.empty() && handle_stack.rbegin()->is_begin);
+						auto start_index = handle_stack.rbegin()->capture_index;
+						last_acception->sub_capture.emplace_back(March::Sub{ std::u32string_view{string.data() + start_index, string.data() + ite.capture_index}, start_index });
+						handle_stack.pop_back();
+					}
+					else
+						handle_stack.push_back(ite);
+				}
+			}
+		}
+		return last_acception;
 	}
 }

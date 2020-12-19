@@ -12,7 +12,7 @@ namespace PineApple::Ebnf
 	struct Table
 	{
 		std::u32string symbol_table;
-		std::vector<size_t> state_to_mask;
+		std::vector<uint32_t> state_to_mask;
 		Lexical::Table lexical_table;
 		std::vector<std::tuple<std::size_t, std::size_t>> symbol_map;
 		size_t ter_count;
