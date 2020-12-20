@@ -84,7 +84,7 @@ namespace PineApple::Lexical
 
 	std::optional<March> Table::ProcessOnce(std::u32string_view code) const
 	{
-		assert(*this);
+		assert(!Empty());
 		auto re = table.Mark(code);
 		if(re)
 			return March{ re->acception_state, re->acception_mask, re->capture.string, {code.begin() + re->capture.string.size(), code.end()}, {{}, CalculateSectionPoint(re->capture.string)} };

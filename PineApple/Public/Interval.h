@@ -160,7 +160,7 @@ namespace PineApple
 		IntervalWrapper(Segment const* using_start = nullptr, size_t using_length = 0) : start(using_start), length(using_length) {}
 		IntervalWrapper(Segment const& ref) : start(&ref), length(1) {} 
 		
-		operator bool() const noexcept {return length != 0;}
+		bool Empty() const noexcept {return length == 0 || start == nullptr;}
 
 		template<typename Allocator>
 		struct Result
@@ -212,7 +212,7 @@ namespace PineApple
 	template<bool write_left, bool write_middle, bool write_right, typename Allocator>
 	auto IntervalWrapper<PointT, Less>::CollisionImplement(IntervalWrapper v2) const -> Result<Allocator>
 	{
-		if (*this && v2)
+		if (!Empty() && !v2.Empty())
 		{
 			std::vector<Segment, Allocator> output_left;
 			std::vector<Segment, Allocator> output_middle;
@@ -289,7 +289,7 @@ namespace PineApple
 	auto IntervalWrapper<PointT, Less>::Union(IntervalWrapper v2) const -> Interval<PointT, Less, Allocator>
 	{
 		
-		if(*this && v2)
+		if(!Empty() && !v2.Empty())
 		{
 			std::vector<Segment, Allocator> result;
 			auto i1s = begin(), i1e = end();
@@ -342,7 +342,7 @@ namespace PineApple
 				result.insert(result.end(), i2s, i2e);
 			}
 			return Interval<PointT, Less, Allocator>(std::move(result), NoDetectT{});
-		}else if(*this)
+		}else if(!Empty())
 			return *this;
 		else
 			return v2;
@@ -380,7 +380,7 @@ namespace PineApple
 		auto rbegin() const { return intervals.rbegin(); }
 		auto rend() const { return intervals.rend(); }
 		size_t size() const noexcept { return intervals.size(); }
-		operator bool() const noexcept{ return !intervals.empty(); }
+		bool Empty() const noexcept{ return intervals.empty(); }
 	private:
 		StorageType intervals;
 	};
@@ -397,7 +397,7 @@ namespace PineApple
 	template<typename PointT, typename Less, typename Allocator>
 	auto  Interval<PointT, Less, Allocator>::AsSegment() const noexcept -> Segment
 	{
-		if(*this)
+		if(!Empty())
 			return {begin()->start, rbegin()->end};
 		return {};
 	}

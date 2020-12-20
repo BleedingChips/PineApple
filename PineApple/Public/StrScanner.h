@@ -63,7 +63,7 @@ namespace PineApple::StrScanner
 	void Process(std::u32string_view pattern, std::u32string_view in, TargetType& ... tar_type)
 	{
 		Pattern cur_pattern{Unfa::CreateUnfaTableFromRegex(pattern)};
-		cur_pattern(in, tar_type...);
+		cur_pattern.Process(in, tar_type...);
 	}
 	
 }

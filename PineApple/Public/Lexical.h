@@ -59,7 +59,7 @@ namespace PineApple::Lexical
 		Unfa::SerilizedTable table;
 		std::optional<March> ProcessOnce(std::u32string_view code) const;
 		std::vector<March> Process(std::u32string_view code, size_t ignore_mask = DefaultIgnoreMask()) const;
-		operator bool() const noexcept{return table;}
+		bool Empty() const noexcept{return table.Empty();}
 		static Table CreateFromRegexs(LexicalRegexInitTuple const* adress, size_t length, bool ignore_controller = true);
 		static Table CreateFromRegexsReverse(LexicalRegexInitTuple const* adress, size_t length, bool ignore_controller = true);
 		static void LexicalFilter(Unfa::Table const& table, std::vector<Unfa::Table::Edge>& list);

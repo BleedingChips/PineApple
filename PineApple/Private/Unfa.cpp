@@ -269,7 +269,7 @@ namespace PineApple::Unfa
 						uint32_t NewNodeOut = NewNodeIn + 1;
 						temporary_node.push_back({Edge{Node1.in, ECapture{true, acception_index }}});
 						temporary_node.emplace_back();
-						temporary_node[Node1.out].emplace_back(Edge{NewNodeOut, ECapture{0, acception_index }});
+						temporary_node[Node1.out].emplace_back(Edge{NewNodeOut, ECapture{false, acception_index }});
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
 					case 19:
@@ -285,12 +285,10 @@ namespace PineApple::Unfa
 						uint32_t NewNode1 = static_cast<uint32_t>(temporary_node.size());
 						uint32_t NewNode2 = NewNode1 + 1;
 						uint32_t NewNode3 = NewNode2 + 1;
-						uint32_t NewNode4 = NewNode3 + 1;
 						temporary_node.push_back({Edge{NewNode2, ECapture{true, acception_index}}});
-						temporary_node.push_back({Edge{NewNode3, EEpsilon{}}});
-						temporary_node.push_back({Edge{NewNode4, ECapture{false, acception_index}}});
+						temporary_node.push_back({Edge{NewNode3, ECapture{false, acception_index}}});
 						temporary_node.emplace_back();
-						return TemNode{ NewNode1, NewNode4 };
+						return TemNode{ NewNode1, NewNode3 };
 					}
 					case 5: {return Interval{}; }
 					case 6:
@@ -312,7 +310,7 @@ namespace PineApple::Unfa
 					{
 						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
 						uint32_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({ Edge{ NewNodeOut, ECapture{tra.MoveData<Interval>(1)} } });
+						temporary_node.push_back({ Edge{ NewNodeOut, EComsume{tra.MoveData<Interval>(1)} } });
 						temporary_node.emplace_back();
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
@@ -331,7 +329,7 @@ namespace PineApple::Unfa
 					{
 						uint32_t NewNodeIn = static_cast<uint32_t>(temporary_node.size());
 						uint32_t NewNodeOut = NewNodeIn + 1;
-						temporary_node.push_back({ Edge{ NewNodeOut, EComsume{std::move(tra.MoveData<Interval>(0))}} });
+						temporary_node.push_back({ Edge{ NewNodeOut, EComsume{tra.MoveData<Interval>(0)}} });
 						temporary_node.emplace_back();
 						return TemNode{ NewNodeIn, NewNodeOut };
 					}
@@ -439,123 +437,6 @@ namespace PineApple::Unfa
 		}
 	}
 
-	/*
-	std::optional<March> Table::Mark(std::u32string_view string, bool greey) const
-	{
-		assert(*this);
-		struct CaptureTuple
-		{
-			bool is_begin;
-			size_t capture_index;
-			size_t require_state;
-		};
-		struct SearchStack
-		{
-			size_t node;
-			size_t edges_index;
-			std::u32string_view last_string;
-			size_t capture_count;
-		};
-		std::deque<CaptureTuple> capture_stack;
-		std::deque<SearchStack> search_stack;
-		search_stack.push_back({ 0,0, string });
-		std::optional<March> Acception;
-		while (!search_stack.empty())
-		{
-			SearchStack stack;
-			Node node;
-			{
-				auto cur_ite = search_stack.rbegin();
-				stack = *cur_ite;
-				node = nodes[cur_ite->node];
-				++cur_ite->edges_index;
-				assert(cur_ite->edges_index <= node.edge_count);
-				if(cur_ite->edges_index == node.edge_count)
-					search_stack.pop_back();
-			}
-			capture_stack.resize(stack.capture_count);
-			Edge edge = edges[node.edge_start_index + stack.edges_index];
-			switch (edge.type)
-			{
-			case Table::EdgeType::Comsume:
-			{
-				if(!stack.last_string.empty())
-				{
-					auto& ref = edge.comsume;
-					IntervalWrapper wrapper(character_set.data() + ref.character_set_start_index, ref.character_set_count);
-					auto cur_character = *stack.last_string.begin();
-					if(wrapper.IsInclude(cur_character) && nodes[ref.jump_state].edge_count > 0)
-						search_stack.push_back({ ref.jump_state, 0, {stack.last_string.data() + 1, stack.last_string.size() - 1}, capture_stack.size() });
-				}
-			}break;
-			case Table::EdgeType::Acception: {
-				auto& ref = edge.acception;
-				search_stack.clear();
-				std::u32string_view capture_str( string.data(), string.size() - stack.last_string.size());
-				if(greey)
-				{
-					++stack.edges_index;
-					if (stack.edges_index  < node.edge_count)
-						search_stack.push_back(stack);
-					if(nodes[ref.jump_state].edge_count > 0)
-						search_stack.push_back({ ref.jump_state, 0, stack.last_string, capture_stack.size() });
-					if (!Acception || Acception->capture.string.size() < capture_str.size())
-					{
-						Acception = March{
-							{capture_str, 0},
-							ref.acception_state,
-							ref.acception_mask,
-							{}
-						};
-					}
-				}else
-				{
-					Acception = March{
-							{capture_str, 0},
-							ref.acception_state,
-							ref.acception_mask,
-							{}
-					};
-					break;
-				}
-			} break;
-			case EdgeType::Capture:
-			{
-				auto ref = edge.capture;
-				capture_stack.push_back({ ref.is_begin == 1, string.size() - stack.last_string.size(), ref.require_state });
-			}
-			case EdgeType::Epsilon:
-			{
-				auto ref = edge.epsilon;
-				if (nodes[ref.jump_state].edge_count > 0)
-					search_stack.push_back({ edge.jump_state, 0, stack.last_string, capture_stack.size() });
-			}break;
-			default: {assert(false); } break;
-			}
-		}
-		if(Acception)
-		{
-			std::vector<CaptureTuple> handle_stack;
-			for(auto& ite : capture_stack)
-			{
-				if(ite.require_state == Acception->acception_state)
-				{
-					if (!ite.is_begin)
-					{
-						assert(!handle_stack.empty() && handle_stack.rbegin()->is_begin);
-						auto start_index = handle_stack.rbegin()->capture_index;
-						Acception->sub_capture.emplace_back(March::Sub{ std::u32string_view{string.data() + start_index, string.data() + ite.capture_index}, start_index });
-						handle_stack.pop_back();
-					}
-					else
-						handle_stack.push_back(ite);
-				}
-			}
-		}
-		return Acception;
-	}
-	*/
-
 	std::tuple<std::set<uint32_t>, std::vector<Table::Edge>> Table::SearchThroughEpsilonEdge(uint32_t const* require_state, size_t length) const
 	{
 		std::vector<Edge> all_edge;
@@ -568,7 +449,13 @@ namespace PineApple::Unfa
 		std::vector<SearchTuple> search_stack;
 
 		for (uint32_t i = static_cast<uint32_t>(length); i > 0; --i)
-			search_stack.push_back({ require_state[i - 1], 0 });
+		{
+			auto state = require_state[i - 1];
+			auto P = finded.insert(state);
+			if(P.second)
+				search_stack.push_back({ require_state[i - 1], 0 });
+		}
+			
 		while (!search_stack.empty())
 		{
 			auto& ref = *search_stack.rbegin();
@@ -576,7 +463,6 @@ namespace PineApple::Unfa
 			auto& node = nodes[ref.node];
 			if (ref.edge >= node.size())
 			{
-				finded.insert(ref.node);
 				search_stack.pop_back();
 			}
 			else while (ref.edge < node.size())
@@ -584,7 +470,8 @@ namespace PineApple::Unfa
 				auto edge = node[(ref.edge++)];
 				if (edge.Is<EEpsilon>())
 				{
-					if (finded.find(edge.jump_state) == finded.end())
+					auto re = finded.insert(edge.jump_state);
+					if (re.second)
 						search_stack.push_back({ edge.jump_state, 0 });
 					break;
 				}
@@ -606,22 +493,22 @@ namespace PineApple::Unfa
 			Interval cur(cur_edge.Get<EComsume>().interval);
 			for(auto& ite : temporary)
 			{
-				if(!cur)
+				if(cur.Empty())
 					output_edge.push_back(std::move(ite));
 				auto& [interval, list] = ite;
 				auto result = cur.Collision(interval);
 				cur = std::move(result.left);
-				if(result.middle)
+				if(!result.middle.Empty())
 				{
 					auto new_list = list;
 					assert(std::find(new_list.begin(), new_list.end(), cur_edge.jump_state) == new_list.end());
 					new_list.push_back(cur_edge.jump_state);
 					output_edge.push_back({std::move(result.middle), std::move(new_list)});
 				}
-				if(result.right)
+				if(!result.right.Empty())
 					output_edge.push_back({ std::move(result.right), std::move(list) });
 			}
-			if(cur)
+			if(!cur.Empty())
 				output_edge.push_back({std::move(cur), {cur_edge.jump_state}} );
 		}
 		return {std::move(output_edge) };
@@ -749,7 +636,7 @@ namespace PineApple::Unfa
 	}
 	
 	struct SEAcception{ uint32_t acception_index; uint32_t acception_mask; };
-	struct SECapture { uint32_t begin; uint32_t require_index; };
+	struct SECapture { uint32_t require_index; };
 	struct SEComsume { uint32_t count; };
 
 	struct SENode{ uint32_t edge_start_offset; uint32_t edge_count; };
@@ -758,8 +645,7 @@ namespace PineApple::Unfa
 	{
 		if(table)
 		{
-			size_t total_space = 0;
-
+			size_t total_space = sizeof(uint32_t);
 			total_space += table.nodes.size() * sizeof(SENode);
 			for (auto& ite : table.nodes)
 			{
@@ -779,9 +665,10 @@ namespace PineApple::Unfa
 				}
 			}
 
-			node_count = table.nodes.size();
 			datas.resize(total_space);
-			SENode *node_adress = reinterpret_cast<SENode*>(datas.data());
+			uint32_t& node_count = *reinterpret_cast<uint32_t*>(datas.data());
+			node_count = static_cast<uint32_t>(table.nodes.size());
+			SENode *node_adress = reinterpret_cast<SENode*>(datas.data() + sizeof(uint32_t));
 			std::byte *edges_adress = reinterpret_cast<std::byte*>(node_adress + node_count);
 			for(auto& ite : table.nodes)
 			{
@@ -804,11 +691,13 @@ namespace PineApple::Unfa
 						acception.acception_mask = ref.acception_mask;
 					}else if(ite2.Is<Table::ECapture>())
 					{
-						edge_desc.type = SEdgeType::Capture;
+						auto& ref = ite2.Get<Table::ECapture>();
+						if (ref.begin)
+							edge_desc.type = SEdgeType::CaptureBegin;
+						else
+							edge_desc.type = SEdgeType::CaptureEnd;
 						auto& capture = *reinterpret_cast<SECapture*>(edges_adress);
 						edges_adress += sizeof(SECapture);
-						auto& ref = ite2.Get<Table::ECapture>();
-						capture.begin = (ref.begin ? 1 : 0);
 						capture.require_index = ref.require_index;
 					}else if(ite2.Is<Table::EComsume>())
 					{
@@ -825,9 +714,9 @@ namespace PineApple::Unfa
 		}
 	}
 
-	std::optional<March> SerilizedTable::Mark(std::u32string_view string, bool greey) const
+	std::optional<March> SerilizedTableWrapper::Mark(std::u32string_view string, bool greey) const
 	{
-		assert(*this);
+		assert(!Empty());
 		struct CaptureTuple
 		{
 			bool is_begin;
@@ -850,8 +739,8 @@ namespace PineApple::Unfa
 		};
 		std::deque<CaptureTuple> capture_stack;
 		std::deque<SearchStack> search_stack;
-		search_stack.push_back({0, EdgeStart(0), 0, Node(0)->edge_count, string, 0});
-		std::optional<March> last_acception;
+		search_stack.push_back({StartNodeIndex(), EdgeStart(StartNodeIndex()), 0, Node(StartNodeIndex())->edge_count, string, capture_stack.size()});
+		std::optional<std::tuple<March, std::deque<CaptureTuple>>> last_acception;
 		while (!search_stack.empty())
 		{
 			const SearchStack stack = *search_stack.rbegin();
@@ -882,33 +771,35 @@ namespace PineApple::Unfa
 				if (greey)
 				{
 					next_edge = reinterpret_cast<SEEdgeDescription const*>(acception + 1);
-					if (!last_acception || last_acception->capture.string.size() < capture_str.size())
+					if (!last_acception || std::get<0>(*last_acception).capture.string.size() < capture_str.size())
 					{
-						last_acception = March{
+						last_acception = {March{
 							{capture_str, 0},
 							acception->acception_index,
 							acception->acception_mask,
 							{}
-						};
+						}, capture_stack};
 					}
 					next_search = NextSearch{ stack.current_edge->jump_state, stack.last_string };
 				}
 				else
 				{
-					last_acception = March{
+					last_acception = {March{
 							{capture_str, 0},
 							acception->acception_index,
 							acception->acception_mask,
 							{}
-					};
+					}, std::move(capture_stack)};
 				}
 			} break;
-			case SEdgeType::Capture:
+			case SEdgeType::CaptureBegin:
+			case SEdgeType::CaptureEnd:
 			{
 				SECapture const* capture = reinterpret_cast<SECapture const*>(stack.current_edge + 1);
 				next_edge = reinterpret_cast<SEEdgeDescription const*>(capture + 1);
-				capture_stack.push_back({ capture->begin == 1, string.size() - stack.last_string.size(), capture->require_index });
+				capture_stack.push_back({ stack.current_edge->type == SEdgeType::CaptureBegin, string.size() - stack.last_string.size(), capture->require_index });
 				next_search = NextSearch{ stack.current_edge->jump_state, stack.last_string };
+				break;
 			}
 			case SEdgeType::Epsilon:
 			{
@@ -942,23 +833,32 @@ namespace PineApple::Unfa
 		}
 		if (last_acception)
 		{
-			std::vector<CaptureTuple> handle_stack;
-			for (auto& ite : capture_stack)
+			auto [march, acception_capture_stack] = *last_acception;
+			std::vector<March::Sub> mark_result;
+			std::deque<std::tuple<CaptureTuple, size_t>> handle_stack;
+			for (auto& ite : acception_capture_stack)
 			{
-				if (ite.require_state == last_acception->acception_state)
+				if (ite.require_state == march.acception_state)
 				{
-					if (!ite.is_begin)
+					if (ite.is_begin)
 					{
-						assert(!handle_stack.empty() && handle_stack.rbegin()->is_begin);
-						auto start_index = handle_stack.rbegin()->capture_index;
-						last_acception->sub_capture.emplace_back(March::Sub{ std::u32string_view{string.data() + start_index, string.data() + ite.capture_index}, start_index });
-						handle_stack.pop_back();
+						handle_stack.emplace_back(ite, mark_result.size());
+						mark_result.emplace_back();
 					}
-					else
-						handle_stack.push_back(ite);
+					else {
+						assert(!handle_stack.empty());
+						auto [tuple, index] = *handle_stack.rbegin();
+						handle_stack.pop_back();
+						assert(index < mark_result.size());
+						auto start_index = tuple.capture_index;
+						mark_result[index] = March::Sub{ std::u32string_view{string.data() + start_index, string.data() + ite.capture_index}, start_index };
+					}
 				}
 			}
+			assert(handle_stack.empty());
+			march.sub_capture = std::move(mark_result);
+			return std::move(march);
 		}
-		return last_acception;
+		return std::nullopt;
 	}
 }

@@ -122,8 +122,6 @@ int main()
 	}));
 
 	std::cout << result2 << std::endl;
-
-	system("pause");
 }
 
 std::u32string_view EbnfCode1()

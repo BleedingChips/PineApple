@@ -77,14 +77,15 @@ namespace PineApple::Unfa
 	inline Table CreateUnfaTableFromRegex(std::u32string_view rex, uint32_t state = 0, uint32_t mask = 0){ return Table::CreateFromRegex(rex, state, mask); }
 	inline Table LinkUnfaTable(Table const* other_table, size_t table_size) { return Table::Link(other_table, table_size); }
 	
-	struct SerilizedTable
+	struct SerilizedTableWrapper
 	{
-
+		
 		enum class SEdgeType : uint32_t
 		{
 			Acception,
 			Epsilon,
-			Capture,
+			CaptureBegin,
+			CaptureEnd,
 			Comsume
 		};
 
@@ -96,31 +97,53 @@ namespace PineApple::Unfa
 
 		struct SENode { uint32_t edge_start_offset; uint32_t edge_count; };
 
-		size_t NodeCount() const noexcept { return node_count; }
-		size_t StartNodeIndex() const noexcept { return 0; }
-		
-		SENode const* Node(size_t node_index) const noexcept{ assert(node_count >= node_index); return reinterpret_cast<SENode const*>(datas.data()) + node_index; }
+		bool Empty() const noexcept { return data == nullptr && data == 0; }
+		uint32_t NodeCount() const noexcept {
+			if (!Empty())
+				return *reinterpret_cast<uint32_t const*>(data);
+			return 0;
+		}
+		SENode const* Node(size_t node_index) const noexcept {
+			assert(!Empty());
+			return reinterpret_cast<SENode const*>(data + sizeof(uint32_t)) + node_index;
+		}
 		SEEdgeDescription const* EdgeStart(size_t node_index) const noexcept
 		{
-			assert(node_count >= node_index);
-			return reinterpret_cast<SEEdgeDescription const*>(Node(node_index)->edge_start_offset * sizeof(uint32_t) + datas.data());
+			assert(!Empty());
+			return reinterpret_cast<SEEdgeDescription const*>(Node(node_index)->edge_start_offset * sizeof(uint32_t) + data);
 		}
-		
-		operator bool() const noexcept { return !datas.empty() && node_count >= 2; }
+		uint32_t StartNodeIndex() const noexcept { return 0; }
+		std::optional<March> Mark(std::u32string_view string, bool greey = true) const;
+		std::byte const* data = nullptr;
+		size_t data_length = 0;
+	};
 
+	struct SerilizedTable
+	{
+
+		using SEdgeType = SerilizedTableWrapper::SEdgeType;
+		using SEEdgeDescription = SerilizedTableWrapper::SEEdgeDescription;
+		using SENode = SerilizedTableWrapper::SENode;
+
+		uint32_t NodeCount() const noexcept { return SerilizedTableWrapper{}.NodeCount(); }
+		uint32_t StartNodeIndex() const noexcept { return 0; }
+		bool Empty() const noexcept { return datas.empty(); }
+		SerilizedTableWrapper AsWrapper() const noexcept{ return { datas.data(), datas.size() }; }
+		operator SerilizedTableWrapper() const noexcept{ return AsWrapper(); }
+		std::optional<March> Mark(std::u32string_view string, bool greey = true) const{ return AsWrapper().Mark(string, greey);  }
 		SerilizedTable() = default;
 		SerilizedTable(Table const& table);
 		SerilizedTable(SerilizedTable const&) = default;
 		SerilizedTable(SerilizedTable&&) = default;
 		SerilizedTable& operator=(SerilizedTable const&) = default;
 		SerilizedTable& operator=(SerilizedTable&&) = default;
-		std::optional<March> Mark(std::u32string_view string, bool greey = true) const;
+		
 		
 	private:
 		std::vector<std::byte> datas;
-		size_t node_count = 0;
-		
 	};
+
+	
 
 	inline SerilizedTable Serilized(Table const& table) { return {table};  }
 
