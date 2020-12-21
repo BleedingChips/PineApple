@@ -315,7 +315,7 @@ namespace PineApple::Ebnf
 			{T::Command, UR"(/\*.*?\*/|//.*?\n)"},
 		};
 
-		static Unfa::SerilizedTable sperator = Unfa::CreateUnfaTableFromRegex(UR"((.*?)(?:\r\n|\n)[\f\t\v\r]*?%%%[\s]*?\n|()[\f\t\v\r]*?%%%[\s]*?\n)").Simplify();
+		static Unfa::SerilizedTable sperator = Unfa::CreateUnfaTableFromRegex(UR"((.*?(?:\r\n|\n))[\f\t\v\r]*?%%%[\s]*?\n|()[\f\t\v\r]*?%%%[\s]*?\n)").Simplify();
 
 		struct SperatedCode
 		{
@@ -341,7 +341,6 @@ namespace PineApple::Ebnf
 				{
 					sperated_code[used] = { code, {Point, next_point} };
 					code = {};
-					break;
 				}
 				Point = next_point;
 				++used;
