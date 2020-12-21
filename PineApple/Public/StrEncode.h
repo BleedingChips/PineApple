@@ -214,12 +214,13 @@ namespace PineApple::StrEncode
 		{
 			RequestResult result;
 			CharWrapper<SameType> wrapper;
+			auto ite_from = from;
 			while (from_length > 0)
 			{
-				DecodeResult decode_result = wrapper.DecodeOne(from, from_length);
+				DecodeResult decode_result = wrapper.DecodeOne(ite_from, from_length);
 				if (decode_result.used_length != 0 && result.require_length + decode_result.used_length <= to_length)
 				{
-					from += decode_result.used_length;
+					ite_from += decode_result.used_length;
 					from_length -= decode_result.used_length;
 					result.require_length += decode_result.used_length;
 					result.characters += 1;
