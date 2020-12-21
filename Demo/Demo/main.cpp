@@ -92,8 +92,6 @@ int main()
 	}));
 
 	std::cout << result << std::endl;
-
-	Lexical::LexicalRegexInitTuple Le[] = {{UR"(:)"}, {UR"(:=)"}};
 	
 	Ebnf::Table tab2 = Ebnf::CreateTable(EbnfCode1());
 	auto His2 = Ebnf::Process(tab2, U"1 + 2 + 3 * 4 - 4 / 2 + 2 * +3 * -2");
