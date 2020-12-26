@@ -3,6 +3,8 @@
 #include <cassert>
 #include <string>
 #include <string_view>
+#include <vector>
+
 namespace PineApple::StrEncode
 {
 
@@ -229,7 +231,7 @@ namespace PineApple::StrEncode
 					break;
 			}
 			if(result.require_length != 0)
-				std::memcpy(to, from, sizeof(SameType) * result.require_length);
+				std::memcpy(to, from, sizeof(RemoveReverseEndianness_t<SameType>) * result.require_length);
 			return {result.require_length, result.require_length, result.characters};
 		}
 		return {0, 0, 0};
@@ -268,7 +270,7 @@ namespace PineApple::StrEncode
 
 	enum class BomType
 	{
-		None,
+		UTF8_NoBom,
 		UTF8,
 		UTF16LE,
 		UTF16BE,
@@ -287,7 +289,7 @@ namespace PineApple::StrEncode
 		case BomType::UTF32BE:
 		case BomType::UTF32LE:
 			return 4;
-		case BomType::None:
+		case BomType::UTF8_NoBom:
 		default:
 			return 0;
 		}
@@ -324,43 +326,119 @@ namespace PineApple::StrEncode
 	{
 		DocumentWrapper(std::byte const* code, size_t length);
 		template<typename Type>
-		std::basic_string<Type> ToString() const
-		{
-			switch (type)
-			{
-			case BomType::UTF8:
-			case BomType::None:
-				return AsWrapper(reinterpret_cast<char8_t const*>(main_body), main_body_length).ToString<Type>();
-			case BomType::UTF16LE:
-				if(DetectEndian() == Endian::Less)
-					return AsWrapper(reinterpret_cast<char16_t const*>(main_body), main_body_length / sizeof(char16_t)).ToString<Type>();
-				else
-					return AsWrapperReverse(reinterpret_cast<char16_t const*>(main_body), main_body_length / sizeof(char16_t)).ToString<Type>();
-			case BomType::UTF16BE:
-				if (DetectEndian() == Endian::Big)
-					return AsWrapper(reinterpret_cast<char16_t const*>(main_body), main_body_length / sizeof(char16_t)).ToString<Type>();
-				else
-					return AsWrapperReverse(reinterpret_cast<char16_t const*>(main_body), main_body_length / sizeof(char16_t)).ToString<Type>();
-			case BomType::UTF32LE:
-				if (DetectEndian() == Endian::Less)
-					return AsWrapper(reinterpret_cast<char32_t const*>(main_body), main_body_length / sizeof(char32_t)).ToString<Type>();
-				else
-					return AsWrapperReverse(reinterpret_cast<char32_t const*>(main_body), main_body_length / sizeof(char32_t)).ToString<Type>();
-			case BomType::UTF32BE:
-				if (DetectEndian() == Endian::Big)
-					return AsWrapper(reinterpret_cast<char32_t const*>(main_body), main_body_length / sizeof(char32_t)).ToString<Type>();
-				else
-					return AsWrapperReverse(reinterpret_cast<char32_t const*>(main_body), main_body_length / sizeof(char32_t)).ToString<Type>();
-			default:
-				return std::basic_string<Type>{};
-			};
-		}
+		std::basic_string<Type> ToString() const;
 		operator bool() const noexcept{ return documenet != nullptr;}
+		template<typename Type>
+		static std::vector<std::byte> EncodeToDocument(RemoveReverseEndianness_t<Type> const* input, size_t length, BomType bom = BomType::UTF8_NoBom);
 	private:
 		std::byte const* documenet = nullptr;
 		size_t documenet_length = 0;
 		std::byte const* main_body = nullptr;
 		size_t main_body_length = 0;
-		BomType type = BomType::None;
+		BomType type = BomType::UTF8_NoBom;
 	};
+
+	template<typename Type>
+	std::basic_string<Type> DocumentWrapper::ToString() const
+	{
+		switch (type)
+		{
+		case BomType::UTF8:
+		case BomType::UTF8_NoBom:
+			return AsWrapper(reinterpret_cast<char8_t const*>(main_body), main_body_length).ToString<Type>();
+		case BomType::UTF16LE:
+			if (DetectEndian() == Endian::Less)
+				return AsWrapper(reinterpret_cast<char16_t const*>(main_body), main_body_length / sizeof(char16_t)).ToString<Type>();
+			else
+				return AsWrapperReverse(reinterpret_cast<char16_t const*>(main_body), main_body_length / sizeof(char16_t)).ToString<Type>();
+		case BomType::UTF16BE:
+			if (DetectEndian() == Endian::Big)
+				return AsWrapper(reinterpret_cast<char16_t const*>(main_body), main_body_length / sizeof(char16_t)).ToString<Type>();
+			else
+				return AsWrapperReverse(reinterpret_cast<char16_t const*>(main_body), main_body_length / sizeof(char16_t)).ToString<Type>();
+		case BomType::UTF32LE:
+			if (DetectEndian() == Endian::Less)
+				return AsWrapper(reinterpret_cast<char32_t const*>(main_body), main_body_length / sizeof(char32_t)).ToString<Type>();
+			else
+				return AsWrapperReverse(reinterpret_cast<char32_t const*>(main_body), main_body_length / sizeof(char32_t)).ToString<Type>();
+		case BomType::UTF32BE:
+			if (DetectEndian() == Endian::Big)
+				return AsWrapper(reinterpret_cast<char32_t const*>(main_body), main_body_length / sizeof(char32_t)).ToString<Type>();
+			else
+				return AsWrapperReverse(reinterpret_cast<char32_t const*>(main_body), main_body_length / sizeof(char32_t)).ToString<Type>();
+		default:
+			return std::basic_string<Type>{};
+		};
+	}
+
+	template<typename Type>
+	std::vector<std::byte> DocumentWrapper::EncodeToDocument(RemoveReverseEndianness_t<Type> const* input, size_t length, BomType bom)
+	{
+		size_t bom_size = ToSize(bom);
+		std::vector<std::byte> result;
+		switch (bom)
+		{
+		case BomType::UTF8:
+		case BomType::UTF8_NoBom:
+		{
+			Encode<Type, char8_t> Wrapper;
+			RequestResult re = Wrapper.Request(input, length);
+			result.resize(re.require_length * sizeof(char8_t) + bom_size);
+			std::memcpy(result.data(), ToBinary(bom), bom_size);
+			Wrapper.Decode(input, length, reinterpret_cast<char8_t *>(result.data() + bom_size), (result.size() - bom_size) / sizeof(char8_t));
+			return std::move(result);
+		}
+		break;
+		case BomType::UTF16LE:
+		case BomType::UTF16BE:
+		{
+			if(DetectEndian() == Endian::Less && bom == BomType::UTF16LE || DetectEndian() == Endian::Big && bom == BomType::UTF16BE)
+			{
+				Encode<Type, char16_t> Wrapper;
+				RequestResult re = Wrapper.Request(input, length);
+				std::vector<std::byte> result;
+				result.resize(bom_size + re.require_length * sizeof(char16_t));
+				std::memcpy(result.data(), ToBinary(bom), bom_size);
+				Wrapper.Decode(input, length, reinterpret_cast<char16_t*>(result.data() + bom_size), (result.size() - bom_size) / sizeof(char16_t));
+				return std::move(result);
+			}else
+			{
+				Encode<Type, ReverseEndianness<char16_t>> Wrapper;
+				RequestResult re = Wrapper.Request(input, length);
+				std::vector<std::byte> result;
+				result.resize(bom_size + re.require_length * sizeof(char16_t));
+				std::memcpy(result.data(), ToBinary(bom), bom_size);
+				Wrapper.Decode(input, length, reinterpret_cast<char16_t*>(result.data() + bom_size), (result.size() - bom_size) / sizeof(char16_t));
+				return std::move(result);
+			}
+		}
+		break;
+		case BomType::UTF32BE:
+		case BomType::UTF32LE:
+		{
+			if (DetectEndian() == Endian::Less && bom == BomType::UTF32LE || DetectEndian() == Endian::Big && bom == BomType::UTF32BE)
+			{
+				Encode<Type, char32_t> Wrapper;
+				RequestResult re = Wrapper.Request(input, length);
+				std::vector<std::byte> result;
+				result.resize(bom_size + re.require_length * sizeof(char32_t));
+				std::memcpy(result.data(), ToBinary(bom), bom_size);
+				Wrapper.Decode(input, length, reinterpret_cast<char32_t*>(result.data() + bom_size), (result.size() - bom_size) / sizeof(char32_t));
+				return std::move(result);
+			}
+			else
+			{
+				Encode<Type, ReverseEndianness<char32_t>> Wrapper;
+				RequestResult re = Wrapper.Request(input, length);
+				std::vector<std::byte> result;
+				result.resize(bom_size + re.require_length * sizeof(char32_t));
+				std::memcpy(result.data(), ToBinary(bom), bom_size);
+				Wrapper.Decode(input, length, reinterpret_cast<char32_t*>(result.data() + bom_size), (result.size() - bom_size) / sizeof(char32_t));
+				return std::move(result);
+			}
+		}
+		break;
+		default: return {};
+		};
+	}
 }

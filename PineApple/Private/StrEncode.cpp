@@ -156,11 +156,7 @@ namespace PineApple::StrEncode
 	size_t CharWrapper<char16_t>::EncodeOne(char32_t temporary, Type* input, size_t input_length)
 	{
 		assert(input != nullptr && input_length > 0);
-		size_t rs = 0;
-		if(temporary < 0x1000)
-			rs = 1;
-		else
-			rs = 2;
+		size_t rs = EncodeRequest(temporary);
 		assert(input_length >= rs);
 		switch (rs)
 		{
@@ -182,8 +178,8 @@ namespace PineApple::StrEncode
 		std::byte* element = static_cast<std::byte*>(input_element);
 		for(size_t i = 0; i < element_count; ++i)
 		{
-			for(size_t k =0; k < tar_length; ++i)
-				std::swap(element[k], element[k-1-i]);
+			for(size_t k =0; k < tar_length; ++k)
+				std::swap(element[k], element[element_length - k - 1]);
 			element += element_length;
 		}
 	}
@@ -268,7 +264,8 @@ namespace PineApple::StrEncode
 	Endian DetectEndian()
 	{
 		constexpr uint16_t Detect = 0x0001;
-		return (*reinterpret_cast<uint8_t const*>(&Detect) == 0x01) ? Endian::Less : Endian::Big;
+		static Endian result = (*reinterpret_cast<uint8_t const*>(&Detect) == 0x01) ? Endian::Less : Endian::Big;
+		return result;
 	}
 	
 
@@ -285,12 +282,12 @@ namespace PineApple::StrEncode
 		if (bom_length >= std::size(utf16_le_bom) && std::memcmp(bom, utf16_le_bom, std::size(utf16_le_bom)) == 0)
 			return BomType::UTF16LE;
 		if (bom_length >= std::size(utf32_le_bom) && std::memcmp(bom, utf32_le_bom, std::size(utf32_le_bom)) == 0)
-			return BomType::UTF16LE;
+			return BomType::UTF32LE;
 		if (bom_length >= std::size(utf16_be_bom) && std::memcmp(bom, utf16_be_bom, std::size(utf16_be_bom)) == 0)
-			return BomType::UTF16LE;
+			return BomType::UTF16BE;
 		if (bom_length >= std::size(utf32_be_bom) && std::memcmp(bom, utf32_be_bom, std::size(utf32_be_bom)) == 0)
-			return BomType::UTF16LE;
-		return BomType::None;
+			return BomType::UTF32BE;
+		return BomType::UTF8_NoBom;
 	}
 
 	std::byte const* ToBinary(BomType type) noexcept
